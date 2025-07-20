@@ -1,0 +1,52 @@
+name: BenHockey
+version: '${project.version}'
+main: me.sammy.benhockey.BenHockey
+api-version: '1.19'
+commands:
+  rink:
+    description: Join a certain rink
+    usage: /rink <rinkname>
+  join:
+    description: Join a team
+    usage: /join <team> [playerName]
+  leave:
+    description: Leave a rink
+  goalie:
+    description: Change position to goalie
+  stats:
+    description: Gets the stats of the game
+  puck:
+    description: Spawns your own puck
+  startgame:
+    description: Starts the game
+  pregame:
+    description: Sets the game to pregame
+  endgame:
+    description: Ends the game
+  lockteams:
+    description: Locks the teams to prevent people from joining
+  setteamname:
+    description: Sets the teams name to a specific name
+    usage: /setteamname <home/away> <name>
+  fo:
+    description: Skips to the faceoff
+  settime:
+    description: Sets the time of the game
+  togglehitting:
+    description: Toggles on and off players being allowed to hit
+  whistle:
+    description: Stops the game
+  penalty:
+    description: Stops the game
+    usage: /penalty <give/edit/end> [playerName] <reason> <time>
+  createrink:
+    description: Starts the setup of a rink
+  setgoal:
+    description: Sets certain locations on the rink
+    usage: /setgoal <home/away/penalty/homebench/awaybench>
+  cancelrink:
+    description: cancels rink set up
+  deleterink:
+    description: deletes a rink from use
+  help:
+    description: Show help
