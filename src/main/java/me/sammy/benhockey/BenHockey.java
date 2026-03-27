@@ -13,9 +13,6 @@ import org.bukkit.World;
 import org.bukkit.entity.Slime;
 import org.bukkit.plugin.java.JavaPlugin;
 
-//TODO: Fix wall bounces still not working everytime
-//TODO: Fix goalie bounce not actually bouncing (just stopping right now)
-
 /**
  * Represents the initialization
  */
@@ -81,13 +78,13 @@ public final class BenHockey extends JavaPlugin {
     }
 
     //TODO
-    // Fix Boards bouncy
+    // Fix wall bounces still not working everytime
+    // Fix goalie bounce not actually bouncing (just stopping right now)
     // Make timer or other scoreboard for intermissions or penalties
     // Add /bench to go to bench
     // make goal zones better (maybe make you set the goal on the location of the actual goal zone)
     // Think of thing to add for right click
     // Fix gloving <--
-    // Add goalie shift to block saves
     // Add shot counter
     // fix slide thingy
 }
