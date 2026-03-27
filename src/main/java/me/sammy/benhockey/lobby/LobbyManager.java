@@ -286,4 +286,8 @@ public class LobbyManager {
     return null;
   }
 
+  public JavaPlugin getPlugin() {
+    return this.plugin;
+  }
+
 }

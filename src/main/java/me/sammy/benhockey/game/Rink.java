@@ -133,6 +133,7 @@ public class Rink {
         meta.setDisplayName("§6Ref Whistle");
         refWhistle.setItemMeta(meta);
         inventory.setItem(8, refWhistle);
+        inventory.setItem(7, createRefMenuItem());
 
         p.setFlying(true);
         p.teleport(new Location(p.getWorld(), centerIce.getX(), centerIce.getY() + 7, centerIce.getZ()));
@@ -198,6 +199,18 @@ public class Rink {
     hockeyStick.setItemMeta(meta);
 
     return hockeyStick;
+  }
+
+  /**
+   * Creates the ref menu tool item.
+   * @return the ref menu item
+   */
+  private ItemStack createRefMenuItem() {
+    ItemStack item = new ItemStack(Material.CLOCK);
+    ItemMeta meta = item.getItemMeta();
+    meta.setDisplayName("§eRef Menu");
+    item.setItemMeta(meta);
+    return item;
   }
 
 
@@ -591,8 +604,8 @@ public class Rink {
     this.state = GameState.PREGAME;
     if (this.game != null) {
       this.game = null;
-      this.scoreboard.update();
     }
+    this.scoreboard.update();
   }
 
   /**
@@ -786,5 +799,19 @@ public class Rink {
         p.sendMessage("§6[§bFH§6] §cUnknown team: " + team);
         break;
     }
+
+    this.scoreboard.update();
+  }
+
+  /**
+   * Awards a goal to the provided team using normal goal-processing logic.
+   * @param scoringTeam is "home" or "away"
+   */
+  public void forceGoal(String scoringTeam) {
+    if (this.game == null || this.state != GameState.GAME) {
+      return;
+    }
+
+    this.game.forceGoal(scoringTeam);
   }
 }
