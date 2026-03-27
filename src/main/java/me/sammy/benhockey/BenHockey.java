@@ -13,6 +13,9 @@ import org.bukkit.World;
 import org.bukkit.entity.Slime;
 import org.bukkit.plugin.java.JavaPlugin;
 
+//TODO: Fix wall bounces still not working everytime
+//TODO: Fix goalie bounce not actually bouncing (just stopping right now)
+
 /**
  * Represents the initialization
  */

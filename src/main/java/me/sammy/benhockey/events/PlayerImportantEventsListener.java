@@ -182,7 +182,7 @@ public class PlayerImportantEventsListener implements Listener {
         return;
       }
 
-      Player player = (Player) e.getWhoClicked();
+      player = (Player) e.getWhoClicked();
       Rink rink = lobbyManager.getPlayerRink(player);
       if (rink == null || lobbyManager.isPlayerInLobby(player)) {
         player.closeInventory();
