@@ -166,13 +166,17 @@ public class PlayerImportantEventsListener implements Listener {
 
     if ((item.getType() == Material.LEATHER_CHESTPLATE || item.getType() == Material.LEATHER_LEGGINGS) &&
             (displayName.equals("§cHome Jersey") || displayName.equals("§9Away Jersey") ||
-                    displayName.equals("§cHome Pants") || displayName.equals("§9Away Pants"))) {
+                    displayName.equals("§cHome Pants") || displayName.equals("§9Away Pants") ||
+                    displayName.equals("§cHome Goalie Chest") || displayName.equals("§9Away Goalie Chest") ||
+                    displayName.equals("§cHome Goalie Pads") || displayName.equals("§9Away Goalie Pads"))) {
       return true;
     }
 
-    if ((item.getType() == Material.LEATHER_BOOTS || item.getType() == Material.LEATHER_HELMET) &&
+    if ((item.getType() == Material.LEATHER_BOOTS || item.getType() == Material.LEATHER_HELMET
+            || item.getType() == Material.IRON_BOOTS || item.getType() == Material.IRON_HELMET) &&
             (displayName.equals("§cHome Visor") || displayName.equals("§9Away Visor") ||
-                    displayName.equals("§cHome Skates") || displayName.equals("§9Away Skates"))) {
+                    displayName.equals("§cHome Skates") || displayName.equals("§9Away Skates") ||
+                    displayName.equals("§bGoalie Mask") || displayName.equals("§bGoalie Skates"))) {
       return true;
     }
 

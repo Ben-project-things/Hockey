@@ -59,7 +59,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Slime> goalieGloveSlime = new HashMap<>();
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
   private final Set<UUID> glovedGoalies = new HashSet<>();
-  private final Set<UUID> recentGoalieBounces = new HashSet<>();
+  private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -479,18 +479,21 @@ public class PlayerHockeyListener implements Listener {
       slime.setVelocity(frictionVel);
     }
 
-    if (velocity.getX() > 0 && isSolidAtOffset(puckLoc, 0.34, 0)) {
+    double lookAheadX = Math.min(0.42, Math.abs(velocity.getX()) * 1.6);
+    double lookAheadZ = Math.min(0.42, Math.abs(velocity.getZ()) * 1.6);
+
+    if (velocity.getX() > 0 && (isSolidAtOffset(puckLoc, 0.34, 0) || isSolidAtOffset(puckLoc, 0.34 + lookAheadX, 0))) {
       bounceX = true;
       newVelocity.setX(-Math.abs(velocity.getX()) * 0.62);
-    } else if (velocity.getX() < 0 && isSolidAtOffset(puckLoc, -0.34, 0)) {
+    } else if (velocity.getX() < 0 && (isSolidAtOffset(puckLoc, -0.34, 0) || isSolidAtOffset(puckLoc, -0.34 - lookAheadX, 0))) {
       bounceX = true;
       newVelocity.setX(Math.abs(velocity.getX()) * 0.62);
     }
 
-    if (velocity.getZ() > 0 && isSolidAtOffset(puckLoc, 0, 0.34)) {
+    if (velocity.getZ() > 0 && (isSolidAtOffset(puckLoc, 0, 0.34) || isSolidAtOffset(puckLoc, 0, 0.34 + lookAheadZ))) {
       bounceZ = true;
       newVelocity.setZ(-Math.abs(velocity.getZ()) * 0.62);
-    } else if (velocity.getZ() < 0 && isSolidAtOffset(puckLoc, 0, -0.34)) {
+    } else if (velocity.getZ() < 0 && (isSolidAtOffset(puckLoc, 0, -0.34) || isSolidAtOffset(puckLoc, 0, -0.34 - lookAheadZ))) {
       bounceZ = true;
       newVelocity.setZ(Math.abs(velocity.getZ()) * 0.62);
     }
@@ -564,7 +567,9 @@ public class PlayerHockeyListener implements Listener {
     }
 
     UUID slimeId = slime.getUniqueId();
-    if (this.recentGoalieBounces.contains(slimeId)) {
+    long now = System.currentTimeMillis();
+    long lastBounce = this.recentGoalieBounceMillis.getOrDefault(slimeId, 0L);
+    if (now - lastBounce < 60L) {
       return;
     }
 
@@ -587,22 +592,23 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector toGoalie = player.getLocation().toVector().subtract(puckLoc.toVector()).setY(0);
-      if (toGoalie.lengthSquared() < 0.0001) {
-        continue;
-      }
-
-      if (velocity.clone().setY(0).dot(toGoalie) <= 0) {
-        continue;
-      }
-
       Vector facing = player.getLocation().getDirection().setY(0).normalize();
-      Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0).normalize();
-      double facingFactor = Math.max(0.2, facing.dot(fromGoalieToPuck) + 0.6);
+      Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
+      if (fromGoalieToPuck.lengthSquared() < 0.0001) {
+        fromGoalieToPuck = velocity.clone().multiply(-1).setY(0);
+      }
+      Vector normal = fromGoalieToPuck.normalize();
+      double facingFactor = Math.max(0.2, facing.dot(normal) + 0.6);
 
-      Vector normal = fromGoalieToPuck.clone().normalize();
       Vector flatVelocity = velocity.clone().setY(0);
-      Vector reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * flatVelocity.dot(normal)));
+      double approach = flatVelocity.dot(normal);
+      Vector reflected;
+      if (approach < 0) {
+        reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * approach));
+      } else {
+        reflected = normal.clone().multiply(Math.max(flatVelocity.length() * 0.68, 0.22));
+      }
+
       reflected.multiply(0.68 * facingFactor);
       reflected.setY(Math.max(0.02, velocity.getY() * 0.25));
       slime.setVelocity(reflected);
@@ -611,8 +617,7 @@ public class PlayerHockeyListener implements Listener {
       slime.teleport(pushOut);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
 
-      this.recentGoalieBounces.add(slimeId);
-      Bukkit.getScheduler().runTaskLater(plugin, () -> this.recentGoalieBounces.remove(slimeId), 2L);
+      this.recentGoalieBounceMillis.put(slimeId, now);
       break;
     }
   }
