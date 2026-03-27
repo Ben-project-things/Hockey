@@ -14,6 +14,7 @@ import org.bukkit.entity.Slime;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -257,6 +258,61 @@ public class Rink {
     p.getInventory().setChestplate(chestplate);
     p.getInventory().setLeggings(leggings);
     p.getInventory().setBoots(skates);
+  }
+
+  /**
+   * Updates a player's appearance to indicate goalie status.
+   * @param team is the team the goalie is on
+   * @param p is the goalie player
+   */
+  private void createGoalieUniform(String team, Player p) {
+    String teamColorCode;
+    String teamName;
+    Color padColor;
+
+    if (team.equalsIgnoreCase("home")) {
+      teamColorCode = "§c";
+      teamName = "Home";
+      padColor = Color.fromRGB(235, 235, 235);
+    }
+    else {
+      teamColorCode = "§9";
+      teamName = "Away";
+      padColor = Color.fromRGB(210, 225, 255);
+    }
+
+    ItemStack mask = new ItemStack(Material.IRON_HELMET);
+    ItemMeta maskMeta = mask.getItemMeta();
+    maskMeta.setDisplayName("§bGoalie Mask");
+    maskMeta.setUnbreakable(true);
+    maskMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+    mask.setItemMeta(maskMeta);
+
+    ItemStack chestplate = new ItemStack(Material.LEATHER_CHESTPLATE);
+    LeatherArmorMeta chestMeta = (LeatherArmorMeta) chestplate.getItemMeta();
+    chestMeta.setColor(padColor);
+    chestMeta.setDisplayName(teamColorCode + teamName + " Goalie Chest");
+    chestMeta.setUnbreakable(true);
+    chestplate.setItemMeta(chestMeta);
+
+    ItemStack leggings = new ItemStack(Material.LEATHER_LEGGINGS);
+    LeatherArmorMeta legMeta = (LeatherArmorMeta) leggings.getItemMeta();
+    legMeta.setColor(padColor);
+    legMeta.setDisplayName(teamColorCode + teamName + " Goalie Pads");
+    legMeta.setUnbreakable(true);
+    leggings.setItemMeta(legMeta);
+
+    ItemStack boots = new ItemStack(Material.IRON_BOOTS);
+    ItemMeta bootMeta = boots.getItemMeta();
+    bootMeta.setDisplayName("§bGoalie Skates");
+    bootMeta.setUnbreakable(true);
+    bootMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+    boots.setItemMeta(bootMeta);
+
+    p.getInventory().setHelmet(mask);
+    p.getInventory().setChestplate(chestplate);
+    p.getInventory().setLeggings(leggings);
+    p.getInventory().setBoots(boots);
   }
 
 
@@ -660,10 +716,20 @@ public class Rink {
   public void changeToGoalie(Player p) {
     if (this.goalies.contains(p)) {
       this.goalies.remove(p);
+      String team = this.getTeam(p);
+      if (team.equalsIgnoreCase("home") || team.equalsIgnoreCase("away")) {
+        createUniform(team, p);
+      }
       p.sendMessage("§6[§bBH§6] §cYou are no longer a goalie.");
     }
     else {
+      String team = this.getTeam(p);
+      if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
+        p.sendMessage("§6[§bBH§6] §cOnly skaters on a team can become goalies.");
+        return;
+      }
       this.goalies.add(p);
+      createGoalieUniform(team, p);
       p.sendMessage("§6[§bBH§6] §aYou are now a goalie.");
     }
   }
