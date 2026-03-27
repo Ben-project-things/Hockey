@@ -491,6 +491,22 @@ public class Rink {
     return this.awayGoalZone;
   }
 
+  /**
+   * Gets the home goal center location.
+   * @return home goal center
+   */
+  public Location getHomeGoalCenter() {
+    return this.homeGoalCenter;
+  }
+
+  /**
+   * Gets the away goal center location.
+   * @return away goal center
+   */
+  public Location getAwayGoalCenter() {
+    return this.awayGoalCenter;
+  }
+
   //TODO Change later for when different types of games.
   /**
    * Starts the game.
