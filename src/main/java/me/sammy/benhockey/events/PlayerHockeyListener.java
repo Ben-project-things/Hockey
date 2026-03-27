@@ -10,6 +10,7 @@ import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
@@ -58,7 +59,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Slime> goalieGloveSlime = new HashMap<>();
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
   private final Set<UUID> glovedGoalies = new HashSet<>();
-  private final Set<UUID> recentBounces = new HashSet<>();
+  private final Set<UUID> recentGoalieBounces = new HashSet<>();
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -447,6 +448,7 @@ public class PlayerHockeyListener implements Listener {
       for (Slime slime : world.getEntitiesByClass(Slime.class)) {
         world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
         applyBoardBounce(slime);
+        applyGoalieBodyBounce(slime);
       }
     }
   }
@@ -460,15 +462,15 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    UUID slimeId = slime.getUniqueId();
-    if (this.recentBounces.contains(slimeId)) {
+    Location puckLoc = slime.getLocation();
+    Vector velocity = slime.getVelocity();
+    if (Math.abs(velocity.getX()) < 0.03 && Math.abs(velocity.getZ()) < 0.03) {
       return;
     }
 
-    Location puckLoc = slime.getLocation();
-    Vector velocity = slime.getVelocity();
     Vector newVelocity = velocity.clone();
-    boolean bounced = false;
+    boolean bounceX = false;
+    boolean bounceZ = false;
 
     if (!slime.isOnGround()) {
       Vector frictionVel = velocity.clone();
@@ -477,47 +479,141 @@ public class PlayerHockeyListener implements Listener {
       slime.setVelocity(frictionVel);
     }
 
-    if (Math.abs(velocity.getX()) < 0.05 && Math.abs(velocity.getZ()) < 0.05) {
+    if (velocity.getX() > 0 && isSolidAtOffset(puckLoc, 0.34, 0)) {
+      bounceX = true;
+      newVelocity.setX(-Math.abs(velocity.getX()) * 0.62);
+    } else if (velocity.getX() < 0 && isSolidAtOffset(puckLoc, -0.34, 0)) {
+      bounceX = true;
+      newVelocity.setX(Math.abs(velocity.getX()) * 0.62);
+    }
+
+    if (velocity.getZ() > 0 && isSolidAtOffset(puckLoc, 0, 0.34)) {
+      bounceZ = true;
+      newVelocity.setZ(-Math.abs(velocity.getZ()) * 0.62);
+    } else if (velocity.getZ() < 0 && isSolidAtOffset(puckLoc, 0, -0.34)) {
+      bounceZ = true;
+      newVelocity.setZ(Math.abs(velocity.getZ()) * 0.62);
+    }
+
+    if (bounceX || bounceZ) {
+      if (Math.abs(newVelocity.getX()) < 0.05) {
+        newVelocity.setX((newVelocity.getX() >= 0 ? 1 : -1) * 0.05);
+      }
+      if (Math.abs(newVelocity.getZ()) < 0.05) {
+        newVelocity.setZ((newVelocity.getZ() >= 0 ? 1 : -1) * 0.05);
+      }
+
+      if (bounceX) {
+        BlockFace pushOutFace = velocity.getX() > 0 ? BlockFace.EAST : BlockFace.WEST;
+        pushPuckOutOfBlock(slime, pushOutFace);
+      }
+      if (bounceZ) {
+        BlockFace pushOutFace = velocity.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
+        pushPuckOutOfBlock(slime, pushOutFace);
+      }
+
+      slime.setVelocity(newVelocity);
+      slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 75f, 0.2f);
+    }
+  }
+
+  private boolean isSolidAtOffset(Location center, double xOffset, double zOffset) {
+    Block check = center.clone().add(xOffset, 0.15, zOffset).getBlock();
+    Block checkHead = center.clone().add(xOffset, 0.75, zOffset).getBlock();
+    return isSolidCollision(check) || isSolidCollision(checkHead);
+  }
+
+  private boolean isSolidCollision(Block block) {
+    Material type = block.getType();
+    return type.isSolid() && !type.isAir();
+  }
+
+  private void pushPuckOutOfBlock(Slime slime, BlockFace wallFace) {
+    Location current = slime.getLocation();
+    Location adjusted = current.clone();
+    double nudge = 0.12;
+
+    switch (wallFace) {
+      case EAST:
+        adjusted.setX(adjusted.getX() - nudge);
+        break;
+      case WEST:
+        adjusted.setX(adjusted.getX() + nudge);
+        break;
+      case SOUTH:
+        adjusted.setZ(adjusted.getZ() - nudge);
+        break;
+      case NORTH:
+        adjusted.setZ(adjusted.getZ() + nudge);
+        break;
+      default:
+        return;
+    }
+
+    slime.teleport(adjusted);
+  }
+
+  private void applyGoalieBodyBounce(Slime slime) {
+    if (slime.isDead() || !slime.isValid()) {
       return;
     }
 
-    Block currentBlock = puckLoc.getBlock();
-    int[][] directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    Vector velocity = slime.getVelocity();
+    if (velocity.lengthSquared() < 0.01) {
+      return;
+    }
 
-    for (int[] dir : directions) {
-      int dx = dir[0];
-      int dz = dir[1];
+    UUID slimeId = slime.getUniqueId();
+    if (this.recentGoalieBounces.contains(slimeId)) {
+      return;
+    }
 
-      if ((dx != 0 && velocity.getX() * dx <= 0) ||
-              (dz != 0 && velocity.getZ() * dz <= 0)) {
+    Location puckLoc = slime.getLocation();
+    for (Player player : slime.getWorld().getPlayers()) {
+      if (!lobbyManager.isPlayerAKeeper(player) || lobbyManager.isPlayerInLobby(player)) {
         continue;
       }
 
-      Block adjacentBlock = currentBlock.getRelative(dx, 0, dz);
-      if (!adjacentBlock.getType().isAir()) {
-        if (dx != 0) {
-          newVelocity.setX(-velocity.getX() * 0.5);
-          bounced = true;
-        }
-        if (dz != 0) {
-          newVelocity.setZ(-velocity.getZ() * 0.5);
-          bounced = true;
-        }
+      double horizontalHalf = player.isSneaking() ? 0.95 : 0.70;
+      double topY = player.getLocation().getY() + 2.0;
+      double bottomY = player.getLocation().getY() - 0.2;
 
-        if (newVelocity.length() < 0.05) {
-          newVelocity.add(new Vector(dx * 0.1, 0, dz * 0.1));
-        }
+      double xDiff = Math.abs(puckLoc.getX() - player.getLocation().getX());
+      double zDiff = Math.abs(puckLoc.getZ() - player.getLocation().getZ());
+      if (xDiff > horizontalHalf || zDiff > horizontalHalf) {
+        continue;
       }
-    }
+      if (puckLoc.getY() < bottomY || puckLoc.getY() > topY) {
+        continue;
+      }
 
-    if (bounced) {
-      slime.setVelocity(newVelocity);
-      slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 75f, 0.2f);
+      Vector toGoalie = player.getLocation().toVector().subtract(puckLoc.toVector()).setY(0);
+      if (toGoalie.lengthSquared() < 0.0001) {
+        continue;
+      }
 
-      this.recentBounces.add(slimeId);
-      Bukkit.getScheduler().runTaskLater(plugin, () -> {
-        this.recentBounces.remove(slimeId);
-      }, 1L);
+      if (velocity.clone().setY(0).dot(toGoalie) <= 0) {
+        continue;
+      }
+
+      Vector facing = player.getLocation().getDirection().setY(0).normalize();
+      Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0).normalize();
+      double facingFactor = Math.max(0.2, facing.dot(fromGoalieToPuck) + 0.6);
+
+      Vector normal = fromGoalieToPuck.clone().normalize();
+      Vector flatVelocity = velocity.clone().setY(0);
+      Vector reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * flatVelocity.dot(normal)));
+      reflected.multiply(0.68 * facingFactor);
+      reflected.setY(Math.max(0.02, velocity.getY() * 0.25));
+      slime.setVelocity(reflected);
+
+      Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
+      slime.teleport(pushOut);
+      slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
+
+      this.recentGoalieBounces.add(slimeId);
+      Bukkit.getScheduler().runTaskLater(plugin, () -> this.recentGoalieBounces.remove(slimeId), 2L);
+      break;
     }
   }
 
