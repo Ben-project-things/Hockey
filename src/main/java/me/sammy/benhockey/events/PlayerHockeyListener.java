@@ -60,6 +60,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
+  private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -69,7 +70,7 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onPlayerLeave(PlayerQuitEvent e) {
     this.charges.remove(e.getPlayer().getUniqueId());
-
+    clearGoalieGloveState(e.getPlayer().getUniqueId());
   }
 
   @EventHandler
@@ -224,20 +225,27 @@ public class PlayerHockeyListener implements Listener {
    * @return a safe location
    */
   private Location getSafeDropLocation(Player goalie) {
-    Location loc = goalie.getLocation().clone();
-    loc.add(loc.getDirection().setY(0).normalize().multiply(1.2));
-
-    Block blockAt = loc.getBlock();
-    if (!blockAt.isPassable()) {
-      loc.add(0, 1, 0);
+    Location eye = goalie.getEyeLocation();
+    Vector forward = eye.getDirection().setY(0).normalize();
+    if (forward.lengthSquared() < 0.0001) {
+      forward = goalie.getLocation().getDirection().setY(0).normalize();
     }
 
-    Location finalLoc = loc.clone();
-    while (finalLoc.getBlock().getType().isAir() && finalLoc.getY() > 0) {
-      finalLoc.subtract(0, 1, 0);
+    Location base = goalie.getLocation().clone().add(forward.multiply(1.2));
+    World world = base.getWorld();
+
+    for (int yOffset = 1; yOffset >= -2; yOffset--) {
+      Location candidate = base.clone().add(0, yOffset, 0);
+      Block feet = candidate.getBlock();
+      Block head = candidate.clone().add(0, 1, 0).getBlock();
+      Block below = candidate.clone().subtract(0, 1, 0).getBlock();
+
+      if (feet.isPassable() && head.isPassable() && !below.isPassable()) {
+        return candidate.add(0.5, 0.02, 0.5);
+      }
     }
-    finalLoc.setY(finalLoc.getY() + 1.01);
-    return finalLoc;
+
+    return world.getHighestBlockAt(base).getLocation().add(0.5, 1.02, 0.5);
   }
 
 
@@ -291,6 +299,8 @@ public class PlayerHockeyListener implements Listener {
     if (lobbyManager.isPlayerAKeeper(player) && speed > 0.5) {
       handleGoalieGlove(player, slime);
       this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
+      e.setCancelled(true);
+      return;
     }
 
     this.resetPower(player);
@@ -315,6 +325,7 @@ public class PlayerHockeyListener implements Listener {
    */
   private void handleGoalieGlove(Player goalie, Slime puck) {
     UUID goalieId = goalie.getUniqueId();
+    clearGoalieGloveState(goalieId);
 
     Location puckLoc = puck.getLocation();
     this.goalieGloveSlime.put(goalieId, puck);
@@ -324,6 +335,7 @@ public class PlayerHockeyListener implements Listener {
     puck.teleport(stash);
 
     puckLoc.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, puckLoc, 10, 0.2, 0.2, 0.2, 0.01);
+    updateGoalieGloveIndicator(goalie, true);
 
     BukkitTask task = new BukkitRunnable() {
       int seconds = 3;
@@ -331,9 +343,7 @@ public class PlayerHockeyListener implements Listener {
       @Override
       public void run() {
         if (!goalie.isOnline()) {
-          glovedGoalies.remove(goalieId);
-          gloveTimers.remove(goalieId);
-          goalieGloveSlime.remove(goalieId);
+          clearGoalieGloveState(goalieId);
           this.cancel();
           return;
         }
@@ -371,8 +381,42 @@ public class PlayerHockeyListener implements Listener {
 
     puck.teleport(drop);
     glovedGoalies.remove(id);
+    updateGoalieGloveIndicator(goalie, false);
 
     puck.setVelocity(new Vector(0, 0.02, 0));
+  }
+
+  private void clearGoalieGloveState(UUID goalieId) {
+    BukkitTask existingTimer = gloveTimers.remove(goalieId);
+    if (existingTimer != null) {
+      existingTimer.cancel();
+    }
+
+    this.glovedGoalies.remove(goalieId);
+    this.goalieGloveSlime.remove(goalieId);
+    Player goalie = Bukkit.getPlayer(goalieId);
+    if (goalie != null) {
+      updateGoalieGloveIndicator(goalie, false);
+    }
+  }
+
+  private void updateGoalieGloveIndicator(Player goalie, boolean gloved) {
+    int slot = 8;
+    if (!gloved) {
+      ItemStack item = goalie.getInventory().getItem(slot);
+      if (item != null && item.getType() == Material.SLIME_BALL
+              && item.hasItemMeta()
+              && GLOVED_PUCK_NAME.equals(item.getItemMeta().getDisplayName())) {
+        goalie.getInventory().clear(slot);
+      }
+      return;
+    }
+
+    ItemStack glovedItem = new ItemStack(Material.SLIME_BALL);
+    ItemMeta meta = glovedItem.getItemMeta();
+    meta.setDisplayName(GLOVED_PUCK_NAME);
+    glovedItem.setItemMeta(meta);
+    goalie.getInventory().setItem(slot, glovedItem);
   }
 
   @EventHandler
@@ -449,6 +493,34 @@ public class PlayerHockeyListener implements Listener {
         world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
         applyBoardBounce(slime);
         applyGoalieBodyBounce(slime);
+      }
+    }
+
+    for (UUID uuid : new HashSet<>(this.glovedGoalies)) {
+      Player goalie = this.plugin.getServer().getPlayer(uuid);
+      if (goalie == null || !goalie.isOnline()) {
+        clearGoalieGloveState(uuid);
+        continue;
+      }
+
+      if (this.lobbyManager.isPlayerInLobby(goalie) || this.lobbyManager.getPlayerRink(goalie) == null) {
+        clearGoalieGloveState(uuid);
+        continue;
+      }
+
+      Rink rink = this.lobbyManager.getPlayerRink(goalie);
+      if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
+        continue;
+      }
+
+      Location goalieBlock = goalie.getLocation().getBlock().getLocation();
+      if (rink.getHomeGoalZone().contains(goalieBlock)) {
+        clearGoalieGloveState(uuid);
+        rink.forceGoal("away");
+      }
+      else if (rink.getAwayGoalZone().contains(goalieBlock)) {
+        clearGoalieGloveState(uuid);
+        rink.forceGoal("home");
       }
     }
   }

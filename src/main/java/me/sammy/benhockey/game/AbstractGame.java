@@ -281,6 +281,19 @@ public abstract class AbstractGame implements Game {
     }
   }
 
+  @Override
+  public void forceGoal(String scoringTeam) {
+    if (!"home".equalsIgnoreCase(scoringTeam) && !"away".equalsIgnoreCase(scoringTeam)) {
+      return;
+    }
+
+    if (this.puck == null || this.puck.isDead()) {
+      return;
+    }
+
+    scoreGoal(scoringTeam.toLowerCase());
+  }
+
   /**
    * Helper method to run a certain runnable after a specified delay.
    * @param seconds is the delay in seconds.

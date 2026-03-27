@@ -87,4 +87,10 @@ public interface Game {
    * @param location is the location to spawn the puck
    */
   void summonPuck(Location location);
+
+  /**
+   * Forces a goal for a specific team using the standard goal handling flow.
+   * @param scoringTeam is the team that should be credited with the goal ("home" or "away")
+   */
+  void forceGoal(String scoringTeam);
 }
