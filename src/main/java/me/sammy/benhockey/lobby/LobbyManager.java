@@ -4,6 +4,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -20,6 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.io.File;
+import java.io.IOException;
 
 public class LobbyManager {
 
@@ -33,6 +38,7 @@ public class LobbyManager {
   public LobbyManager(JavaPlugin plugin) {
     this.lobbySpawn = Objects.requireNonNull(Bukkit.getWorld("world")).getHighestBlockAt(0, 0).getLocation().add(0.5, 1, 0.5);
     this.plugin = plugin;
+    loadRinksFromConfig();
   }
 
   /**
@@ -158,6 +164,7 @@ public class LobbyManager {
       Rink newRink = builder.build();
       rinks.add(newRink);
       rinkBuilders.remove(player.getUniqueId());
+      saveRinksToConfig();
       player.sendMessage("§6[§bBH§6] §aRink §b" + builder.getName() + " §acreated successfully!");
     } else {
       player.sendMessage("§6[§bBH§6] §eStill need to set: §7" + String.join(", ", remaining));
@@ -186,12 +193,19 @@ public class LobbyManager {
       player.sendMessage("§6[§bBH§6] §cNo Rink with that name exists.");
     }
     else {
+      Rink rinkToRemove = null;
       for (Rink rink : rinks) {
-        if (Objects.equals(rink.getName(), rinkName)) {
-          player.sendMessage("§6[§bBH§6] §aSuccessfully deleted rink: §7" + rinkName + " §a.");
-          rinks.remove(rink);
-          return;
+        if (rink.getName().equalsIgnoreCase(rinkName)) {
+          rinkToRemove = rink;
+          break;
         }
+      }
+
+      if (rinkToRemove != null) {
+          rinks.remove(rinkToRemove);
+          saveRinksToConfig();
+          player.sendMessage("§6[§bBH§6] §aSuccessfully deleted rink: §7" + rinkName + " §a.");
+          return;
       }
       player.sendMessage("§6[§bBH§6] §cNo Rink with that name exists.");
     }
@@ -288,6 +302,103 @@ public class LobbyManager {
 
   public JavaPlugin getPlugin() {
     return this.plugin;
+  }
+
+  /**
+   * Saves all loaded rinks to arenas.yml.
+   */
+  public void saveRinksToConfig() {
+    File dataFolder = plugin.getDataFolder();
+    if (!dataFolder.exists() && !dataFolder.mkdirs()) {
+      plugin.getLogger().warning("Unable to create plugin data folder for arenas.yml.");
+      return;
+    }
+
+    File arenaFile = new File(dataFolder, "arenas.yml");
+    YamlConfiguration config = new YamlConfiguration();
+
+    for (Rink rink : rinks) {
+      String basePath = "rinks." + rink.getName();
+      saveLocation(config, basePath + ".centerIce", rink.getCenterIce());
+      saveLocation(config, basePath + ".homeGoal", rink.getHomeGoalCenter());
+      saveLocation(config, basePath + ".awayGoal", rink.getAwayGoalCenter());
+      saveLocation(config, basePath + ".penaltyBox", rink.getPenaltyBox());
+      saveLocation(config, basePath + ".homeBench", rink.getHomeBench());
+      saveLocation(config, basePath + ".awayBench", rink.getAwayBench());
+    }
+
+    try {
+      config.save(arenaFile);
+    } catch (IOException e) {
+      plugin.getLogger().severe("Failed to save arenas.yml: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Loads previously created rinks from arenas.yml.
+   */
+  private void loadRinksFromConfig() {
+    File arenaFile = new File(plugin.getDataFolder(), "arenas.yml");
+    if (!arenaFile.exists()) {
+      return;
+    }
+
+    YamlConfiguration config = YamlConfiguration.loadConfiguration(arenaFile);
+    ConfigurationSection rinksSection = config.getConfigurationSection("rinks");
+    if (rinksSection == null) {
+      return;
+    }
+
+    for (String rinkName : rinksSection.getKeys(false)) {
+      String basePath = "rinks." + rinkName;
+      Location centerIce = loadLocation(config, basePath + ".centerIce");
+      Location homeGoal = loadLocation(config, basePath + ".homeGoal");
+      Location awayGoal = loadLocation(config, basePath + ".awayGoal");
+      Location penaltyBox = loadLocation(config, basePath + ".penaltyBox");
+      Location homeBench = loadLocation(config, basePath + ".homeBench");
+      Location awayBench = loadLocation(config, basePath + ".awayBench");
+
+      if (centerIce == null || homeGoal == null || awayGoal == null || penaltyBox == null
+              || homeBench == null || awayBench == null) {
+        plugin.getLogger().warning("Skipping rink '" + rinkName + "' due to incomplete location data.");
+        continue;
+      }
+
+      rinks.add(new Rink(rinkName, centerIce, homeGoal, awayGoal, penaltyBox, homeBench, awayBench, plugin));
+    }
+  }
+
+  private void saveLocation(YamlConfiguration config, String path, Location location) {
+    config.set(path + ".world", location.getWorld().getName());
+    config.set(path + ".x", location.getX());
+    config.set(path + ".y", location.getY());
+    config.set(path + ".z", location.getZ());
+    config.set(path + ".yaw", location.getYaw());
+    config.set(path + ".pitch", location.getPitch());
+  }
+
+  private Location loadLocation(YamlConfiguration config, String path) {
+    String worldName = config.getString(path + ".world");
+    if (worldName == null) {
+      return null;
+    }
+
+    World world = Bukkit.getWorld(worldName);
+    if (world == null) {
+      plugin.getLogger().warning("World '" + worldName + "' not loaded while reading " + path + ".");
+      return null;
+    }
+
+    if (!config.contains(path + ".x") || !config.contains(path + ".y") || !config.contains(path + ".z")) {
+      return null;
+    }
+
+    double x = config.getDouble(path + ".x");
+    double y = config.getDouble(path + ".y");
+    double z = config.getDouble(path + ".z");
+    float yaw = (float) config.getDouble(path + ".yaw", 0.0D);
+    float pitch = (float) config.getDouble(path + ".pitch", 0.0D);
+    return new Location(world, x, y, z, yaw, pitch);
   }
 
 }

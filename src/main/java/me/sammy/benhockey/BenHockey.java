@@ -49,8 +49,9 @@ public final class BenHockey extends JavaPlugin {
     }
 
     @Override
-    public void onDisable() {
+  public void onDisable() {
 
+        lobbyManager.saveRinksToConfig();
         lobbyManager.removeLobbyPlayers();
 
         for (World world : Bukkit.getWorlds()) {
