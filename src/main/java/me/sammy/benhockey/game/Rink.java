@@ -286,12 +286,12 @@ public class Rink {
     if (team.equalsIgnoreCase("home")) {
       teamColorCode = "§c";
       teamName = "Home";
-      padColor = Color.fromRGB(235, 235, 235);
+      padColor = Color.fromRGB(210, 55, 55);
     }
     else {
       teamColorCode = "§9";
       teamName = "Away";
-      padColor = Color.fromRGB(210, 225, 255);
+      padColor = Color.fromRGB(65, 110, 225);
     }
 
     ItemStack mask = new ItemStack(Material.IRON_HELMET);
