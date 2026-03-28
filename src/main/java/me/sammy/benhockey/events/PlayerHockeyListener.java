@@ -63,6 +63,8 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Double> lastPuckVerticalVelocity = new HashMap<>();
   private final Map<UUID, Double> puckAirbornePeakY = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
+  private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
+  private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -179,7 +181,10 @@ public class PlayerHockeyListener implements Listener {
     UUID uuid = player.getUniqueId();
 
     if (lobbyManager.isPlayerAKeeper(player) && this.glovedGoalies.contains(uuid)) {
-      dropGlovedPuck(player);
+      Action action = e.getAction();
+      if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+        dropGlovedPuck(player);
+      }
       return;
     }
 
@@ -193,9 +198,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     ItemStack interactItem = player.getInventory().getItemInMainHand();
-    if (interactItem.getType() == Material.STICK &&
-            interactItem.hasItemMeta() &&
-            "§aHockey Stick".equals(interactItem.getItemMeta().getDisplayName())) {
+    if (isHockeyStick(interactItem)) {
 
       this.rightClickCooldown.add(uuid);
       Bukkit.getScheduler().runTaskLater(plugin, () -> rightClickCooldown.remove(uuid), 1L);
@@ -259,7 +262,7 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onDropHockeyStick(PlayerDropItemEvent e) {
     ItemStack droppedItem = e.getItemDrop().getItemStack();
-    if (droppedItem.getType() != Material.STICK || !droppedItem.hasItemMeta() || !droppedItem.getItemMeta().getDisplayName().equals("§aHockey Stick")) {
+    if (!isHockeyStick(droppedItem)) {
       return;
     }
 
@@ -297,7 +300,7 @@ public class PlayerHockeyListener implements Listener {
     ItemMeta meta = (item != null && item.getType() == Material.STICK)
             ? item.getItemMeta() : null;
 
-    if (meta == null || !meta.hasDisplayName() || !meta.getDisplayName().equals("§aHockey Stick")) {
+    if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
 
@@ -450,10 +453,7 @@ public class PlayerHockeyListener implements Listener {
 
     ItemStack item = player.getInventory().getItemInMainHand();
 
-    if (item != null && item.getType() == Material.STICK &&
-            item.hasItemMeta() &&
-            item.getItemMeta().hasDisplayName() &&
-            item.getItemMeta().getDisplayName().equals("§aHockey Stick")) {
+    if (isHockeyStick(item)) {
 
       player.setLevel(1);
 
@@ -608,8 +608,8 @@ public class PlayerHockeyListener implements Listener {
       slime.setVelocity(frictionVel);
     }
 
-    double lookAheadX = Math.min(0.42, Math.abs(velocity.getX()) * 1.6);
-    double lookAheadZ = Math.min(0.42, Math.abs(velocity.getZ()) * 1.6);
+    double lookAheadX = Math.min(0.58, Math.abs(velocity.getX()) * 1.9);
+    double lookAheadZ = Math.min(0.58, Math.abs(velocity.getZ()) * 1.9);
 
     if (velocity.getX() > 0 && (isSolidAtOffset(puckLoc, 0.34, 0) || isSolidAtOffset(puckLoc, 0.34 + lookAheadX, 0))) {
       bounceX = true;
@@ -735,6 +735,17 @@ public class PlayerHockeyListener implements Listener {
       Vector flatVelocity = velocity.clone().setY(0);
       double approach = flatVelocity.dot(normal);
       if (approach >= -0.01) {
+        if (flatVelocity.lengthSquared() < 0.02) {
+          Vector softRebound = normal.clone().multiply(0.12);
+          softRebound.setY(Math.max(0.02, velocity.getY() * 0.35));
+          slime.setVelocity(softRebound);
+
+          Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
+          slime.teleport(pushOut);
+          slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
+          this.recentGoalieBounceMillis.put(slimeId, now);
+          break;
+        }
         continue;
       }
 
@@ -810,7 +821,7 @@ public class PlayerHockeyListener implements Listener {
     ItemMeta meta = item.getType() == Material.STICK
             ? item.getItemMeta() : null;
 
-    if (meta == null || !meta.hasDisplayName() || !meta.getDisplayName().equals("§aHockey Stick")) {
+    if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
 
@@ -829,5 +840,18 @@ public class PlayerHockeyListener implements Listener {
     meta.addEnchant(Enchantment.KNOCKBACK, 1, true);
     item.setItemMeta(meta);
     p.getInventory().setItemInMainHand(item);
+  }
+
+  private boolean isHockeyStick(ItemStack item) {
+    if (item == null || item.getType() != Material.STICK || !item.hasItemMeta()) {
+      return false;
+    }
+
+    ItemMeta meta = item.getItemMeta();
+    return meta != null && meta.hasDisplayName() && isHockeyStickName(meta.getDisplayName());
+  }
+
+  private boolean isHockeyStickName(String displayName) {
+    return HOCKEY_STICK_NAME.equals(displayName) || GOALIE_STICK_NAME.equals(displayName);
   }
 }
