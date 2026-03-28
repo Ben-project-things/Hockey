@@ -35,7 +35,7 @@ public final class BenHockey extends JavaPlugin {
 
         registerCommands(new String[]{"rink", "join", "goalie", "leave", "goalie", "stats", "puck",
                         "startgame", "pregame", "endgame", "togglehitting", "whistle", "penalty",
-                        "lockteams", "setteamname", "fo", "settime", "createrink", "setgoal",
+                        "lockteams", "setteamname", "fo", "settime", "bench", "createrink", "setgoal",
                         "cancelrink", "deleterink", "help"},
                 new GameCommands(this.lobbyManager));
 

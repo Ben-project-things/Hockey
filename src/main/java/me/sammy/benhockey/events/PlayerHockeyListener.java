@@ -60,6 +60,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
+  private final Map<UUID, Double> lastPuckVerticalVelocity = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
@@ -488,13 +489,22 @@ public class PlayerHockeyListener implements Listener {
       p.setExp((float) nextCharge);
     }
 
+    Set<UUID> livePucks = new HashSet<>();
     for (World world : Bukkit.getWorlds()) {
       for (Slime slime : world.getEntitiesByClass(Slime.class)) {
+        livePucks.add(slime.getUniqueId());
         world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
+        double previousVertical = this.lastPuckVerticalVelocity.getOrDefault(
+                slime.getUniqueId(),
+                slime.getVelocity().getY()
+        );
         applyBoardBounce(slime);
+        applyGroundBounce(slime, previousVertical);
         applyGoalieBodyBounce(slime);
+        this.lastPuckVerticalVelocity.put(slime.getUniqueId(), slime.getVelocity().getY());
       }
     }
+    this.lastPuckVerticalVelocity.keySet().retainAll(livePucks);
 
     for (UUID uuid : new HashSet<>(this.glovedGoalies)) {
       Player goalie = this.plugin.getServer().getPlayer(uuid);
@@ -523,6 +533,34 @@ public class PlayerHockeyListener implements Listener {
         rink.forceGoal("home");
       }
     }
+  }
+
+  /**
+   * Adds a slight vertical puck bounce when the puck lands from a high-enough pop.
+   * @param slime is the puck
+   * @param previousVerticalVelocity is the puck's vertical velocity from the previous tick
+   */
+  private void applyGroundBounce(Slime slime, double previousVerticalVelocity) {
+    if (slime.isDead() || !slime.isValid() || !slime.isOnGround()) {
+      return;
+    }
+
+    Vector velocity = slime.getVelocity();
+    if (velocity.getY() > 0.05 || previousVerticalVelocity > -0.33) {
+      return;
+    }
+
+    double bounceY = Math.min(0.55, Math.abs(previousVerticalVelocity) * 0.45);
+    if (bounceY < 0.16) {
+      return;
+    }
+
+    Vector newVelocity = velocity.clone();
+    newVelocity.setY(bounceY);
+    newVelocity.setX(newVelocity.getX() * 0.93);
+    newVelocity.setZ(newVelocity.getZ() * 0.93);
+    slime.setVelocity(newVelocity);
+    slime.getWorld().playSound(slime.getLocation(), Sound.BLOCK_BASALT_STEP, 15f, 1.5f);
   }
 
   /**
