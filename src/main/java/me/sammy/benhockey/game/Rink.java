@@ -201,6 +201,32 @@ public class Rink {
     return hockeyStick;
   }
 
+  private ItemStack createGoalieStick() {
+    ItemStack goalieStick = createHockeyStick();
+    ItemMeta meta = goalieStick.getItemMeta();
+    meta.setDisplayName("§bGoalie Stick");
+    goalieStick.setItemMeta(meta);
+    return goalieStick;
+  }
+
+  private void replaceStick(Player player, String oldDisplayName, ItemStack newStick) {
+    Inventory inventory = player.getInventory();
+    for (int i = 0; i < inventory.getSize(); i++) {
+      ItemStack item = inventory.getItem(i);
+      if (item == null || item.getType() != Material.STICK || !item.hasItemMeta()) {
+        continue;
+      }
+      ItemMeta itemMeta = item.getItemMeta();
+      if (!itemMeta.hasDisplayName() || !oldDisplayName.equals(itemMeta.getDisplayName())) {
+        continue;
+      }
+      inventory.setItem(i, newStick);
+      return;
+    }
+
+    inventory.addItem(newStick);
+  }
+
   /**
    * Creates the ref menu tool item.
    * @return the ref menu item
@@ -286,12 +312,12 @@ public class Rink {
     if (team.equalsIgnoreCase("home")) {
       teamColorCode = "§c";
       teamName = "Home";
-      padColor = Color.fromRGB(235, 235, 235);
+      padColor = Color.fromRGB(210, 55, 55);
     }
     else {
       teamColorCode = "§9";
       teamName = "Away";
-      padColor = Color.fromRGB(210, 225, 255);
+      padColor = Color.fromRGB(65, 110, 225);
     }
 
     ItemStack mask = new ItemStack(Material.IRON_HELMET);
@@ -749,6 +775,7 @@ public class Rink {
       if (team.equalsIgnoreCase("home") || team.equalsIgnoreCase("away")) {
         createUniform(team, p);
       }
+      replaceStick(p, "§bGoalie Stick", createHockeyStick());
       p.sendMessage("§6[§bBH§6] §cYou are no longer a goalie.");
     }
     else {
@@ -759,6 +786,7 @@ public class Rink {
       }
       this.goalies.add(p);
       createGoalieUniform(team, p);
+      replaceStick(p, "§aHockey Stick", createGoalieStick());
       p.sendMessage("§6[§bBH§6] §aYou are now a goalie.");
     }
   }
