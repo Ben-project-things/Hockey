@@ -11,6 +11,8 @@ commands:
     usage: /join <team> [playerName]
   leave:
     description: Leave a rink
+  bench:
+    description: Teleport to your team's bench
   goalie:
     description: Change position to goalie
   stats:

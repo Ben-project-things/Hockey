@@ -42,6 +42,8 @@ public abstract class AbstractGame implements Game {
   protected BukkitRunnable countdownTimer;
   protected BukkitRunnable puckChecker;
   protected BukkitRunnable pendingDelayedTask;
+  protected BukkitRunnable intermissionTimer;
+  protected int intermissionTimeLeft;
 
   /**
    * Represents the constructor for an abstract game in which all games share these fields.
@@ -57,6 +59,7 @@ public abstract class AbstractGame implements Game {
     this.period = 1;
     this.timeLeft = 300000;
     this.gamePaused = false;
+    this.intermissionTimeLeft = 0;
 
   }
 
@@ -304,10 +307,40 @@ public abstract class AbstractGame implements Game {
       this.pendingDelayedTask.cancel();
     }
 
+    if (this.intermissionTimer != null) {
+      this.intermissionTimer.cancel();
+    }
+
+    this.intermissionTimeLeft = seconds * 1000;
+    this.rink.getScoreboard().update();
+
+    this.intermissionTimer = new BukkitRunnable() {
+      @Override
+      public void run() {
+        intermissionTimeLeft -= 100;
+        if (intermissionTimeLeft <= 0) {
+          intermissionTimeLeft = 0;
+          this.cancel();
+          intermissionTimer = null;
+          rink.getScoreboard().update();
+          return;
+        }
+
+        rink.getScoreboard().update();
+      }
+    };
+    this.intermissionTimer.runTaskTimer(this.plugin, 0L, 2L);
+
     this.pendingDelayedTask = new BukkitRunnable() {
       @Override
       public void run() {
         pendingDelayedTask = null;
+        if (intermissionTimer != null) {
+          intermissionTimer.cancel();
+          intermissionTimer = null;
+        }
+        intermissionTimeLeft = 0;
+        rink.getScoreboard().update();
         task.run();
       }
     };
@@ -335,6 +368,12 @@ public abstract class AbstractGame implements Game {
       this.pendingDelayedTask.cancel();
       this.pendingDelayedTask = null;
     }
+
+    if (this.intermissionTimer != null) {
+      this.intermissionTimer.cancel();
+      this.intermissionTimer = null;
+    }
+    this.intermissionTimeLeft = 0;
 
     if (puck != null && !puck.isDead()) {
       puck.remove();
@@ -365,6 +404,29 @@ public abstract class AbstractGame implements Game {
   @Override
   public int getTimeLeft() {
     return this.timeLeft;
+  }
+
+  @Override
+  public int getIntermissionTimeLeft() {
+    return this.intermissionTimeLeft;
+  }
+
+  @Override
+  public String getPenaltySummary() {
+    if (this.activePenalties.isEmpty()) {
+      return "None";
+    }
+
+    return this.activePenalties.entrySet().stream()
+            .sorted(Map.Entry.comparingByValue())
+            .limit(3)
+            .map(entry -> {
+              OfflinePlayer offline = Bukkit.getOfflinePlayer(entry.getKey());
+              String name = offline.getName() != null ? offline.getName() : "Unknown";
+              int seconds = Math.max(0, entry.getValue() / 1000);
+              return name + " " + formatClock(seconds);
+            })
+            .collect(Collectors.joining(", "));
   }
 
   @Override
@@ -514,6 +576,13 @@ public abstract class AbstractGame implements Game {
       this.pendingDelayedTask = null;
     }
 
+    if (this.intermissionTimer != null) {
+      this.intermissionTimer.cancel();
+      this.intermissionTimer = null;
+    }
+    this.intermissionTimeLeft = 0;
+    this.rink.getScoreboard().update();
+
     if (puck != null && !puck.isDead()) {
       puck.remove();
     }
@@ -524,7 +593,6 @@ public abstract class AbstractGame implements Game {
   public void penalty(Player commandSender, String type, String playerName, String reason,
                       String timeStr) {
     OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
-    Player onlinePlayer = (Player) offlinePlayer;
     UUID uuid = offlinePlayer.getUniqueId();
 
     int timeSeconds = 0;
@@ -542,7 +610,10 @@ public abstract class AbstractGame implements Game {
           return;
         }
         activePenalties.put(uuid, timeSeconds);
-        onlinePlayer.teleport(rink.getPenaltyBox());
+        Player onlinePlayer = Bukkit.getPlayer(uuid);
+        if (onlinePlayer != null) {
+          onlinePlayer.teleport(rink.getPenaltyBox());
+        }
         for (Player p : rink.getAllPlayers()) {
           p.sendTitle("§6Penalty: " + reason, "§7Player: " + playerName + "| Time: " + timeStr +
                           "s",
@@ -588,13 +659,19 @@ public abstract class AbstractGame implements Game {
       if (newTime <= 0) {
         penaltiesToRemove.add(entry.getKey());
       } else {
-        activePenalties.put(entry.getKey(), newTime);
+        entry.setValue(newTime);
       }
     }
 
     for (UUID uuid : penaltiesToRemove) {
       endPenalty(uuid);
     }
+  }
+
+  private String formatClock(int seconds) {
+    int minutes = seconds / 60;
+    int remainder = seconds % 60;
+    return String.format("%d:%02d", minutes, remainder);
   }
 
   /**

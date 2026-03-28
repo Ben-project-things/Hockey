@@ -118,6 +118,15 @@ public class GameCommands implements CommandExecutor {
           lobbyManager.addPlayerToLobby(player);
           return true;
 
+        case "bench":
+          if (lobbyManager.isPlayerInLobby(player)) {
+            player.sendMessage("§6[§bBH§6] §cYou must be in a rink to use this command.");
+            return true;
+          }
+          Rink benchRink = lobbyManager.getPlayerRink(player);
+          benchRink.sendPlayerToBench(player);
+          return true;
+
         case "startgame":
           if (player.isOp() || lobbyManager.getPlayerRink(player).getTeam(player).equalsIgnoreCase("ref")) {
             if (lobbyManager.isPlayerInLobby(player)) {
@@ -380,6 +389,7 @@ public class GameCommands implements CommandExecutor {
     player.sendMessage("§a/stats §7- Gets the stats of the current game.");
     player.sendMessage("§a/puck §7- Spawns a personal puck.");
     player.sendMessage("§a/leave §7- Return to lobby.");
+    player.sendMessage("§a/bench §7- Teleport to your team's bench.");
 
     if (player.isOp()) {
       player.sendMessage("§6[§bBH§6] §cOperator Commands:");

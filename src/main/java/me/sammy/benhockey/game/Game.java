@@ -56,6 +56,18 @@ public interface Game {
   int getTimeLeft();
 
   /**
+   * Gets the remaining intermission delay in milliseconds (0 if there is no active delay).
+   * @return intermission time left
+   */
+  int getIntermissionTimeLeft();
+
+  /**
+   * Gets a compact, scoreboard-friendly list of active penalties and their remaining times.
+   * @return active penalty summary text
+   */
+  String getPenaltySummary();
+
+  /**
    * Adds the touch for the player's given player stats, also calculates the last 4 players to hit.
    * @param player is the player to add the stats to
    */
