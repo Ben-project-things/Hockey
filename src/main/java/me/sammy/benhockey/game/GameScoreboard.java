@@ -50,6 +50,15 @@ public class GameScoreboard {
               getPeriodDisplay(),
               formatTime(game.getTimeLeft())
       );
+
+      if (game.getIntermissionTimeLeft() > 0) {
+        title += "    §6Intermission: §f" + formatTime(game.getIntermissionTimeLeft());
+      }
+
+      String penaltySummary = game.getPenaltySummary();
+      if (!"None".equalsIgnoreCase(penaltySummary)) {
+        title += "    §cPEN: §f" + penaltySummary;
+      }
     }
 
     bossBar.setTitle(title);

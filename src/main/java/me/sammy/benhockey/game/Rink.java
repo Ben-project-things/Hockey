@@ -778,6 +778,27 @@ public class Rink {
   }
 
   /**
+   * Sends a skater to their team's bench.
+   * @param player is the player using /bench
+   */
+  public void sendPlayerToBench(Player player) {
+    String team = this.getTeam(player);
+    if ("home".equalsIgnoreCase(team)) {
+      player.teleport(this.homeBench);
+      player.sendMessage("§6[§bBH§6] §aTeleported to the home bench.");
+      return;
+    }
+
+    if ("away".equalsIgnoreCase(team)) {
+      player.teleport(this.awayBench);
+      player.sendMessage("§6[§bBH§6] §aTeleported to the away bench.");
+      return;
+    }
+
+    player.sendMessage("§6[§bBH§6] §cOnly players on home or away can use /bench.");
+  }
+
+  /**
    * Method to give a penalty to a specific player.
    * @param commandSender is the person that sent the command
    * @param type is the type of penalty call (give, edit, end)
