@@ -650,7 +650,7 @@ public class PlayerHockeyListener implements Listener {
   }
 
   private boolean isSolidAtOffset(Location center, double xOffset, double zOffset) {
-    double[] yOffsets = {-0.1, 0.35, 0.8, 1.15};
+    double[] yOffsets = {0.18, 0.45, 0.78, 1.08};
     for (double yOffset : yOffsets) {
       Block check = center.clone().add(xOffset, yOffset, zOffset).getBlock();
       if (isSolidCollision(check)) {
@@ -726,25 +726,24 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector facing = player.getLocation().getDirection().setY(0).normalize();
       Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
       if (fromGoalieToPuck.lengthSquared() < 0.0001) {
         fromGoalieToPuck = velocity.clone().multiply(-1).setY(0);
       }
       Vector normal = fromGoalieToPuck.normalize();
-      double facingFactor = Math.max(0.2, facing.dot(normal) + 0.6);
 
       Vector flatVelocity = velocity.clone().setY(0);
       double approach = flatVelocity.dot(normal);
-      Vector reflected;
-      if (approach < 0) {
-        reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * approach));
-      } else {
-        reflected = normal.clone().multiply(Math.max(flatVelocity.length() * 0.68, 0.22));
+      if (approach >= -0.01) {
+        continue;
       }
 
-      reflected.multiply(0.68 * facingFactor);
-      reflected.setY(Math.max(0.02, velocity.getY() * 0.25));
+      Vector reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * approach));
+      reflected.multiply(0.62);
+      if (reflected.lengthSquared() < 0.0144) {
+        reflected = normal.clone().multiply(0.12);
+      }
+      reflected.setY(Math.max(0.02, velocity.getY() * 0.35));
       slime.setVelocity(reflected);
 
       Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
