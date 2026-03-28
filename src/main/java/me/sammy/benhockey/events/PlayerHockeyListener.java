@@ -61,6 +61,7 @@ public class PlayerHockeyListener implements Listener {
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
   private final Map<UUID, Double> lastPuckVerticalVelocity = new HashMap<>();
+  private final Map<UUID, Double> puckAirbornePeakY = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
@@ -99,23 +100,28 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    if (this.slideCooldown.contains(uuid)) {
+    int newSlot = e.getNewSlot();
+    boolean attemptedSlide = newSlot == 1 || newSlot == 2;
+    if (!attemptedSlide) {
       return;
     }
 
-    int newSlot = e.getNewSlot();
+    e.setCancelled(true);
+
+    if (this.slideCooldown.contains(uuid)) {
+      p.getInventory().setHeldItemSlot(0);
+      return;
+    }
 
     if (newSlot == 1) {
       slidePlayer(p, "Left");
-      p.getInventory().setHeldItemSlot(0);
     }
 
     if (newSlot == 2) {
       slidePlayer(p, "Right");
-      p.getInventory().setHeldItemSlot(0);
     }
 
-    e.setCancelled(true);
+    p.getInventory().setHeldItemSlot(0);
     this.slideCooldown.add(uuid);
     Bukkit.getScheduler().runTaskLater(plugin, () -> slideCooldown.remove(uuid), 40L);
     p.playSound(p.getLocation(), Sound.BLOCK_SCAFFOLDING_PLACE, 50f, 1.2f);
@@ -492,19 +498,25 @@ public class PlayerHockeyListener implements Listener {
     Set<UUID> livePucks = new HashSet<>();
     for (World world : Bukkit.getWorlds()) {
       for (Slime slime : world.getEntitiesByClass(Slime.class)) {
-        livePucks.add(slime.getUniqueId());
+        UUID slimeId = slime.getUniqueId();
+        livePucks.add(slimeId);
         world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
+        if (!slime.isOnGround()) {
+          double y = slime.getLocation().getY();
+          this.puckAirbornePeakY.merge(slimeId, y, Math::max);
+        }
         double previousVertical = this.lastPuckVerticalVelocity.getOrDefault(
-                slime.getUniqueId(),
+                slimeId,
                 slime.getVelocity().getY()
         );
         applyBoardBounce(slime);
         applyGroundBounce(slime, previousVertical);
         applyGoalieBodyBounce(slime);
-        this.lastPuckVerticalVelocity.put(slime.getUniqueId(), slime.getVelocity().getY());
+        this.lastPuckVerticalVelocity.put(slimeId, slime.getVelocity().getY());
       }
     }
     this.lastPuckVerticalVelocity.keySet().retainAll(livePucks);
+    this.puckAirbornePeakY.keySet().retainAll(livePucks);
 
     for (UUID uuid : new HashSet<>(this.glovedGoalies)) {
       Player goalie = this.plugin.getServer().getPlayer(uuid);
@@ -542,6 +554,13 @@ public class PlayerHockeyListener implements Listener {
    */
   private void applyGroundBounce(Slime slime, double previousVerticalVelocity) {
     if (slime.isDead() || !slime.isValid() || !slime.isOnGround()) {
+      return;
+    }
+
+    UUID slimeId = slime.getUniqueId();
+    double landingY = slime.getLocation().getY();
+    Double peakY = this.puckAirbornePeakY.remove(slimeId);
+    if (peakY == null || peakY - landingY < 2.0) {
       return;
     }
 
@@ -626,14 +645,19 @@ public class PlayerHockeyListener implements Listener {
       }
 
       slime.setVelocity(newVelocity);
-      slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 75f, 0.2f);
+      slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 100f, 0.2f);
     }
   }
 
   private boolean isSolidAtOffset(Location center, double xOffset, double zOffset) {
-    Block check = center.clone().add(xOffset, 0.15, zOffset).getBlock();
-    Block checkHead = center.clone().add(xOffset, 0.75, zOffset).getBlock();
-    return isSolidCollision(check) || isSolidCollision(checkHead);
+    double[] yOffsets = {0.18, 0.45, 0.78, 1.08};
+    for (double yOffset : yOffsets) {
+      Block check = center.clone().add(xOffset, yOffset, zOffset).getBlock();
+      if (isSolidCollision(check)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean isSolidCollision(Block block) {
@@ -702,25 +726,24 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector facing = player.getLocation().getDirection().setY(0).normalize();
       Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
       if (fromGoalieToPuck.lengthSquared() < 0.0001) {
         fromGoalieToPuck = velocity.clone().multiply(-1).setY(0);
       }
       Vector normal = fromGoalieToPuck.normalize();
-      double facingFactor = Math.max(0.2, facing.dot(normal) + 0.6);
 
       Vector flatVelocity = velocity.clone().setY(0);
       double approach = flatVelocity.dot(normal);
-      Vector reflected;
-      if (approach < 0) {
-        reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * approach));
-      } else {
-        reflected = normal.clone().multiply(Math.max(flatVelocity.length() * 0.68, 0.22));
+      if (approach >= -0.01) {
+        continue;
       }
 
-      reflected.multiply(0.68 * facingFactor);
-      reflected.setY(Math.max(0.02, velocity.getY() * 0.25));
+      Vector reflected = flatVelocity.subtract(normal.clone().multiply(2.0 * approach));
+      reflected.multiply(0.62);
+      if (reflected.lengthSquared() < 0.0144) {
+        reflected = normal.clone().multiply(0.12);
+      }
+      reflected.setY(Math.max(0.02, velocity.getY() * 0.35));
       slime.setVelocity(reflected);
 
       Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
