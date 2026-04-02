@@ -307,7 +307,7 @@ public class PlayerHockeyListener implements Listener {
 
     double speed = slime.getVelocity().length();
 
-    if (lobbyManager.isPlayerAKeeper(player) && speed > 0.5) {
+    if (lobbyManager.isPlayerAKeeper(player) && speed > 0.3) {
       handleGoalieGlove(player, slime);
       this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
       e.setCancelled(true);
