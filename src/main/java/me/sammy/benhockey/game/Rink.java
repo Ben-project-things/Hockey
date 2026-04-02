@@ -109,6 +109,7 @@ public class Rink {
    */
   public void handleTeamJoin(String team, Player p) {
     Inventory inventory = p.getInventory();
+    this.goalies.remove(p);
 
     switch (team.toLowerCase()) {
       case "fan":
@@ -429,19 +430,24 @@ public class Rink {
    */
   public List<Location> getGoalZone(Location goalCenter, Location rinkCenter) {
     List<Location> goalZone = new ArrayList<>();
+    Location goalBlock = goalCenter.getBlock().getLocation();
+    Location centerBlock = rinkCenter.getBlock().getLocation();
 
-    Vector goalToCenter = rinkCenter.toVector().subtract(goalCenter.toVector()).normalize();
+    int dx = goalBlock.getBlockX() - centerBlock.getBlockX();
+    int dz = goalBlock.getBlockZ() - centerBlock.getBlockZ();
+    boolean useXAxis = Math.abs(dx) >= Math.abs(dz);
 
-    Vector goalDirection = goalToCenter.multiply(-1);
-    //TODO modify a bit maybe
-    Location base = goalCenter.clone().add(goalDirection.clone().multiply(1.43));
+    int forwardX = useXAxis ? Integer.signum(dx) : 0;
+    int forwardZ = useXAxis ? 0 : Integer.signum(dz);
 
-    Vector cross = new Vector(-goalDirection.getZ(), 0, goalDirection.getX());
+    Location base = goalBlock.clone().add(forwardX, 0, forwardZ);
+
+    int crossX = useXAxis ? 0 : 1;
+    int crossZ = useXAxis ? 1 : 0;
 
     for (int i = -2; i <= 2; i++) {
-      Vector offset = cross.clone().multiply(i);
-      Location zoneBlock = base.clone().add(offset);
-      goalZone.add(zoneBlock.getBlock().getLocation());
+      Location zoneBlock = base.clone().add(crossX * i, 0, crossZ * i).getBlock().getLocation();
+      goalZone.add(zoneBlock);
     }
 
     return goalZone;
@@ -663,6 +669,7 @@ public class Rink {
    */
   public void summonPersonalPuck(Player p) {
     UUID playerId = p.getUniqueId();
+    Location spawnLocation = getPersonalPuckSpawnLocation(p);
 
     if (this.personalPucks.containsKey(playerId)) {
       Slime existingPuck = this.personalPucks.get(playerId);
@@ -670,12 +677,12 @@ public class Rink {
       if (existingPuck == null || existingPuck.isDead()) {
         this.personalPucks.remove(playerId);
       } else {
-        existingPuck.teleport(p.getLocation());
+        existingPuck.teleport(spawnLocation);
         return;
       }
     }
 
-    Slime newPuck = (Slime) p.getWorld().spawnEntity(p.getLocation(), EntityType.SLIME);
+    Slime newPuck = (Slime) p.getWorld().spawnEntity(spawnLocation, EntityType.SLIME);
     newPuck.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION,
             Integer.MAX_VALUE, 150, false, false));
     newPuck.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION,
@@ -689,6 +696,25 @@ public class Rink {
     newPuck.setPersistent(true);
 
     this.personalPucks.put(playerId, newPuck);
+  }
+
+  private Location getPersonalPuckSpawnLocation(Player player) {
+    Location feet = player.getLocation().getBlock().getLocation().add(0.5, 0.05, 0.5);
+    Vector direction = player.getLocation().getDirection().setY(0);
+    if (direction.lengthSquared() < 0.0001) {
+      return feet;
+    }
+
+    Vector step = direction.normalize();
+    int xStep = (int) Math.signum(step.getX());
+    int zStep = (int) Math.signum(step.getZ());
+    Location frontBlock = player.getLocation().getBlock().getLocation().add(xStep, 0, zStep);
+
+    if (!frontBlock.getBlock().getType().isAir()) {
+      return feet;
+    }
+
+    return player.getLocation();
   }
 
   /**

@@ -1,5 +1,7 @@
 package me.sammy.benhockey.game;
 
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
@@ -130,6 +132,7 @@ public abstract class AbstractGame implements Game {
 
         timeLeft -= 100;
         updatePenalties();
+        sendPenaltyTimers();
         rink.getScoreboard().update();
       }
     };
@@ -320,12 +323,14 @@ public abstract class AbstractGame implements Game {
         intermissionTimeLeft -= 100;
         if (intermissionTimeLeft <= 0) {
           intermissionTimeLeft = 0;
+          clearIntermissionTimers();
           this.cancel();
           intermissionTimer = null;
           rink.getScoreboard().update();
           return;
         }
 
+        sendIntermissionTimer();
         rink.getScoreboard().update();
       }
     };
@@ -339,6 +344,7 @@ public abstract class AbstractGame implements Game {
           intermissionTimer.cancel();
           intermissionTimer = null;
         }
+        clearIntermissionTimers();
         intermissionTimeLeft = 0;
         rink.getScoreboard().update();
         task.run();
@@ -374,6 +380,7 @@ public abstract class AbstractGame implements Game {
       this.intermissionTimer = null;
     }
     this.intermissionTimeLeft = 0;
+    clearIntermissionTimers();
 
     if (puck != null && !puck.isDead()) {
       puck.remove();
@@ -581,6 +588,7 @@ public abstract class AbstractGame implements Game {
       this.intermissionTimer = null;
     }
     this.intermissionTimeLeft = 0;
+    clearIntermissionTimers();
     this.rink.getScoreboard().update();
 
     if (puck != null && !puck.isDead()) {
@@ -690,8 +698,37 @@ public abstract class AbstractGame implements Game {
       penaltyExit.setX(penaltyExit.getBlockX() + 0.5);
       penaltyExit.setZ(penaltyExit.getBlockZ() + 0.5);
       onlinePlayer.teleport(penaltyExit);
+      onlinePlayer.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
 
       onlinePlayer.sendMessage("§6[§bBH§6] §aYour penalty has ended!");
+    }
+  }
+
+  private void sendIntermissionTimer() {
+    String text = "§6Intermission: §f" + formatTime(this.intermissionTimeLeft);
+    for (Player player : this.rink.getAllPlayers()) {
+      player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(text));
+    }
+  }
+
+  private void clearIntermissionTimers() {
+    for (Player player : this.rink.getAllPlayers()) {
+      player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
+    }
+  }
+
+  private void sendPenaltyTimers() {
+    for (Map.Entry<UUID, Integer> entry : this.activePenalties.entrySet()) {
+      Player penalizedPlayer = Bukkit.getPlayer(entry.getKey());
+      if (penalizedPlayer == null || !this.rink.containsPlayer(penalizedPlayer)) {
+        continue;
+      }
+
+      String penaltyTime = formatTime(entry.getValue());
+      penalizedPlayer.spigot().sendMessage(
+              ChatMessageType.ACTION_BAR,
+              new TextComponent("§cPenalty Time Remaining: §f" + penaltyTime)
+      );
     }
   }
 
