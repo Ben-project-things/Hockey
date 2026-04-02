@@ -61,6 +61,7 @@ public class PlayerHockeyListener implements Listener {
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
   private final Map<UUID, Double> lastPuckVerticalVelocity = new HashMap<>();
+  private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Map<UUID, Double> puckAirbornePeakY = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
@@ -509,13 +510,19 @@ public class PlayerHockeyListener implements Listener {
                 slimeId,
                 slime.getVelocity().getY()
         );
-        applyBoardBounce(slime);
+        Vector previousVelocity = this.lastPuckVelocity.getOrDefault(
+                slimeId,
+                slime.getVelocity().clone()
+        );
+        applyBoardBounce(slime, previousVelocity);
         applyGroundBounce(slime, previousVertical);
         applyGoalieBodyBounce(slime);
+        this.lastPuckVelocity.put(slimeId, slime.getVelocity().clone());
         this.lastPuckVerticalVelocity.put(slimeId, slime.getVelocity().getY());
       }
     }
     this.lastPuckVerticalVelocity.keySet().retainAll(livePucks);
+    this.lastPuckVelocity.keySet().retainAll(livePucks);
     this.puckAirbornePeakY.keySet().retainAll(livePucks);
 
     for (UUID uuid : new HashSet<>(this.glovedGoalies)) {
@@ -586,27 +593,16 @@ public class PlayerHockeyListener implements Listener {
    * Method to apply the board bounce and normal slime physics.
    * @param slime is the slime to apply it to
    */
-  private void applyBoardBounce(Slime slime) {
+  private void applyBoardBounce(Slime slime, Vector oldVelocity) {
     if (slime.isDead() || !slime.isValid()) {
       return;
     }
 
     Location puckLoc = slime.getLocation();
     Vector velocity = slime.getVelocity();
-    if (Math.abs(velocity.getX()) < 0.03 && Math.abs(velocity.getZ()) < 0.03) {
-      return;
-    }
-
     Vector newVelocity = velocity.clone();
     boolean bounceX = false;
     boolean bounceZ = false;
-
-    if (!slime.isOnGround()) {
-      Vector frictionVel = velocity.clone();
-      frictionVel.setX(frictionVel.getX() / 0.98);
-      frictionVel.setZ(frictionVel.getZ() / 0.98);
-      slime.setVelocity(frictionVel);
-    }
 
     double lookAheadX = Math.min(0.58, Math.abs(velocity.getX()) * 1.9);
     double lookAheadZ = Math.min(0.58, Math.abs(velocity.getZ()) * 1.9);
@@ -625,6 +621,27 @@ public class PlayerHockeyListener implements Listener {
     } else if (velocity.getZ() < 0 && (isSolidAtOffset(puckLoc, 0, -0.34) || isSolidAtOffset(puckLoc, 0, -0.34 - lookAheadZ))) {
       bounceZ = true;
       newVelocity.setZ(Math.abs(velocity.getZ()) * 0.62);
+    }
+
+    // OG-style fallback: when axis motion is suddenly killed by a wall, bounce from previous tick velocity.
+    if (!bounceX && Math.abs(oldVelocity.getX()) > 0.08 && Math.abs(velocity.getX()) < 0.0001) {
+      bounceX = true;
+      newVelocity.setX(-oldVelocity.getX() * 0.8);
+    } else if (!bounceX && Math.abs(oldVelocity.getX() - velocity.getX()) < 0.1) {
+      newVelocity.setX(oldVelocity.getX() * 0.98);
+    }
+
+    if (!bounceZ && Math.abs(oldVelocity.getZ()) > 0.08 && Math.abs(velocity.getZ()) < 0.0001) {
+      bounceZ = true;
+      newVelocity.setZ(-oldVelocity.getZ() * 0.8);
+    } else if (!bounceZ && Math.abs(oldVelocity.getZ() - velocity.getZ()) < 0.1) {
+      newVelocity.setZ(oldVelocity.getZ() * 0.98);
+    }
+
+    // Small floor bounce from the air (intentionally flat for hockey puck behavior).
+    if (slime.isOnGround() && oldVelocity.getY() < -0.16) {
+      double flatFloorBounce = Math.min(0.09, Math.abs(oldVelocity.getY()) * 0.22);
+      newVelocity.setY(Math.max(newVelocity.getY(), flatFloorBounce));
     }
 
     if (bounceX || bounceZ) {
@@ -646,7 +663,10 @@ public class PlayerHockeyListener implements Listener {
 
       slime.setVelocity(newVelocity);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 100f, 0.2f);
+      return;
     }
+
+    slime.setVelocity(newVelocity);
   }
 
   private boolean isSolidAtOffset(Location center, double xOffset, double zOffset) {
@@ -713,7 +733,7 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      double horizontalHalf = player.isSneaking() ? 0.95 : 0.70;
+      double horizontalHalf = player.isSneaking() ? 0.50 : 0.30;
       double topY = player.getLocation().getY() + 2.0;
       double bottomY = player.getLocation().getY() - 0.2;
 
@@ -726,21 +746,26 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector fromGoalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
-      if (fromGoalieToPuck.lengthSquared() < 0.0001) {
-        fromGoalieToPuck = velocity.clone().multiply(-1).setY(0);
+      Vector facing = player.getLocation().getDirection().setY(0);
+      if (facing.lengthSquared() < 0.0001) {
+        facing = velocity.clone().multiply(-1).setY(0);
       }
-      Vector normal = fromGoalieToPuck.normalize();
+      Vector normal = facing.normalize();
 
       Vector flatVelocity = velocity.clone().setY(0);
       double approach = flatVelocity.dot(normal);
-      if (approach >= -0.01) {
+      if (approach > 0) {
+        normal.multiply(-1);
+        approach = flatVelocity.dot(normal);
+      }
+
+      if (approach >= -0.005) {
         if (flatVelocity.lengthSquared() < 0.02) {
           Vector softRebound = normal.clone().multiply(0.12);
           softRebound.setY(Math.max(0.02, velocity.getY() * 0.35));
           slime.setVelocity(softRebound);
 
-          Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
+          Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.52 : 0.36));
           slime.teleport(pushOut);
           slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
           this.recentGoalieBounceMillis.put(slimeId, now);
@@ -757,7 +782,7 @@ public class PlayerHockeyListener implements Listener {
       reflected.setY(Math.max(0.02, velocity.getY() * 0.35));
       slime.setVelocity(reflected);
 
-      Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.55 : 0.45));
+      Location pushOut = puckLoc.clone().add(normal.multiply(player.isSneaking() ? 0.52 : 0.36));
       slime.teleport(pushOut);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
 
