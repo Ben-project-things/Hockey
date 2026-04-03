@@ -150,7 +150,7 @@ public class PlayerHockeyListener implements Listener {
 
     p.getInventory().setHeldItemSlot(0);
     this.slideCooldown.add(uuid);
-    Bukkit.getScheduler().runTaskLater(plugin, () -> slideCooldown.remove(uuid), 40L);
+    Bukkit.getScheduler().runTaskLater(plugin, () -> slideCooldown.remove(uuid), 20L);
     p.playSound(p.getLocation(), Sound.BLOCK_SCAFFOLDING_PLACE, 50f, 1.2f);
   }
 
@@ -204,10 +204,6 @@ public class PlayerHockeyListener implements Listener {
 
     Player player = e.getPlayer();
     UUID uuid = player.getUniqueId();
-
-    if (lobbyManager.isPlayerAKeeper(player) && this.glovedGoalies.contains(uuid)) {
-      return;
-    }
 
     if (rightClickCooldown.contains(uuid)) {
       return;
@@ -313,6 +309,10 @@ public class PlayerHockeyListener implements Listener {
 
     e.setCancelled(true);
     e.getItemDrop().remove();
+
+    if (lobbyManager.isPlayerAKeeper(player)) {
+      return;
+    }
 
     Rink rink = this.lobbyManager.getPlayerRink(player);
     if (rink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
@@ -972,14 +972,14 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Vector velocity = slime.getVelocity();
-    if (velocity.lengthSquared() < 0.004) {
+    if (velocity.lengthSquared() < 0.0016) {
       return;
     }
 
     UUID slimeId = slime.getUniqueId();
     long now = System.currentTimeMillis();
     long lastBounce = this.recentGoalieBounceMillis.getOrDefault(slimeId, 0L);
-    if (now - lastBounce < 250L) {
+    if (now - lastBounce < 100L) {
       return;
     }
 
@@ -1002,35 +1002,32 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector goalieCenter = player.getLocation().clone().add(0, 1.0, 0).toVector();
-      Vector toPuck = puckLoc.toVector().subtract(goalieCenter).setY(0);
-      if (toPuck.lengthSquared() < 0.0001) {
-        toPuck = player.getLocation().getDirection().setY(0);
-      }
-
-      Vector collisionNormal = toPuck.normalize();
       Vector incomingHorizontal = velocity.clone().setY(0);
       if (incomingHorizontal.lengthSquared() < 0.0001) {
         continue;
       }
-      Vector incomingDirection = incomingHorizontal.clone().normalize();
-      if (incomingDirection.dot(collisionNormal) >= -0.08) {
+
+      Vector facing = player.getLocation().getDirection().setY(0);
+      if (facing.lengthSquared() < 0.0001) {
+        facing = new Vector(0, 0, 1);
+      }
+      facing.normalize();
+
+      Vector toPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
+      if (toPuck.lengthSquared() > 0.0001 && toPuck.normalize().dot(facing) < -0.22) {
         continue;
       }
 
       int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
-      double horizontalStrength = 0.95 + (hitLevel * 0.45);
-      Vector playerSpeed = player.getVelocity().clone().setY(0).multiply(0.75);
-      Vector knockback = collisionNormal.clone().multiply(horizontalStrength).add(playerSpeed);
-      if (knockback.lengthSquared() < 0.0001) {
-        knockback = collisionNormal.clone().multiply(horizontalStrength);
-      }
-
-      Vector bounced = knockback.clone();
+      double incomingSpeed = incomingHorizontal.length();
+      double horizontalStrength = Math.max(0.45, (incomingSpeed * 0.84) + (hitLevel * 0.10));
+      Vector playerSpeed = player.getVelocity().clone().setY(0);
+      double playerForwardSpeed = Math.max(0, playerSpeed.dot(facing)) * 0.45;
+      Vector bounced = facing.clone().multiply(horizontalStrength + playerForwardSpeed);
       bounced.setY(Math.max(0.07, Math.abs(velocity.getY()) * 0.35));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = collisionNormal.clone().multiply(player.isSneaking() ? 0.92 : 0.76);
+      Vector pushDirection = facing.clone().multiply(player.isSneaking() ? 0.92 : 0.76);
       Location pushOut = puckLoc.clone().add(pushDirection.setY(0));
       slime.teleport(pushOut);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
@@ -1178,11 +1175,13 @@ public class PlayerHockeyListener implements Listener {
     ArmorStand stand = location.getWorld().spawn(location, ArmorStand.class, armorStand -> {
       armorStand.setInvisible(true);
       armorStand.setGravity(false);
-      armorStand.setMarker(false);
+      armorStand.setMarker(true);
       armorStand.setSmall(false);
       armorStand.setBasePlate(false);
       armorStand.setArms(true);
       armorStand.setSilent(true);
+      armorStand.setInvulnerable(true);
+      armorStand.setCollidable(false);
       armorStand.getEquipment().setItemInMainHand(new ItemStack(Material.SHIELD));
       armorStand.getEquipment().setItemInOffHand(null);
     });
