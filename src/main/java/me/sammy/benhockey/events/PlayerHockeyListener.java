@@ -36,6 +36,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.EulerAngle;
 import org.bukkit.util.Vector;
 
 import java.util.HashMap;
@@ -235,10 +236,14 @@ public class PlayerHockeyListener implements Listener {
       }
       meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_SPEED);
 
+      double attackSpeed = (newLevel == 3) ? -0.5 : 2.5;
+      if (this.dangleModePlayers.contains(uuid) && newLevel == 1) {
+        attackSpeed = 10.0;
+      }
       AttributeModifier attackSpeedModifier = new AttributeModifier(
               UUID.randomUUID(),
               "generic_attack_speed",
-              (newLevel == 3) ? -0.5 : 2.5,
+              attackSpeed,
               AttributeModifier.Operation.ADD_NUMBER,
               EquipmentSlot.HAND
       );
@@ -390,28 +395,37 @@ public class PlayerHockeyListener implements Listener {
         forward.normalize();
 
         if (hitLevel == 1) {
-          Vector smallPush = forward.multiply(0.27);
+          Vector smallPush = forward.multiply(0.34);
           smallPush.setY(0.01);
           slime.setVelocity(smallPush);
           return;
         }
 
         if (hitLevel == 2) {
-          Vector pull = forward.multiply(-0.33);
+          Vector pull = updatedVelocity.clone();
+          pull.setX(-pull.getX());
+          pull.setZ(-pull.getZ());
+          if (pull.clone().setY(0).lengthSquared() < 0.30) {
+            pull = forward.clone().multiply(-0.56);
+          }
           pull.setY(0.02);
           slime.setVelocity(pull);
           return;
         }
 
         Vector boosted = updatedVelocity.clone();
-        boosted.setX(boosted.getX() * 1.25);
-        boosted.setZ(boosted.getZ() * 1.25);
+        boosted.setX(boosted.getX() * 1.42);
+        boosted.setZ(boosted.getZ() * 1.42);
         boosted.setY(boosted.getY() + (charge * 0.2));
         slime.setVelocity(boosted);
         return;
       }
 
       double extraY = charge * 0.65;
+      if (hitLevel == 3) {
+        updatedVelocity.setX(updatedVelocity.getX() * 1.18);
+        updatedVelocity.setZ(updatedVelocity.getZ() * 1.18);
+      }
       updatedVelocity.setY(updatedVelocity.getY() + extraY);
       slime.setVelocity(updatedVelocity);
     }, 1L);
@@ -480,6 +494,7 @@ public class PlayerHockeyListener implements Listener {
     Location drop = getSafeDropLocation(goalie);
 
     puck.teleport(drop);
+    puck.setRotation(0f, 0f);
     glovedGoalies.remove(id);
     updateGoalieGloveIndicator(goalie, false);
 
@@ -560,6 +575,7 @@ public class PlayerHockeyListener implements Listener {
     ItemStack item = player.getInventory().getItemInMainHand();
 
     if (isHockeyStick(item)) {
+      setDangleMode(player, false);
 
       player.setLevel(1);
 
@@ -675,14 +691,20 @@ public class PlayerHockeyListener implements Listener {
       }
 
       boolean hasPossession = rink.hasPossession(player);
-      ItemStack indicator = new ItemStack(hasPossession ? Material.LIME_DYE : Material.RED_DYE);
-      ItemMeta meta = indicator.getItemMeta();
-      if (meta != null) {
-        meta.setDisplayName(hasPossession ? POSSESSION_YES : POSSESSION_NO);
-        indicator.setItemMeta(meta);
+      if (rink.getGameState() == GameState.GAME) {
+        ItemStack indicator = new ItemStack(hasPossession ? Material.LIME_DYE : Material.RED_DYE);
+        ItemMeta meta = indicator.getItemMeta();
+        if (meta != null) {
+          meta.setDisplayName(hasPossession ? POSSESSION_YES : POSSESSION_NO);
+          indicator.setItemMeta(meta);
+        }
+        player.getInventory().setItem(4, indicator);
+      } else {
+        ItemStack slotItem = player.getInventory().getItem(4);
+        if (slotItem != null && (slotItem.getType() == Material.LIME_DYE || slotItem.getType() == Material.RED_DYE)) {
+          player.getInventory().clear(4);
+        }
       }
-
-      player.getInventory().setItem(4, indicator);
 
       if (rink.getGameState() == GameState.GAME
               && this.dangleModePlayers.contains(player.getUniqueId())
@@ -700,7 +722,6 @@ public class PlayerHockeyListener implements Listener {
       }
       player.addPotionEffect(new PotionEffect(PotionEffectType.POISON, Integer.MAX_VALUE, 0, false, false, false));
       player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_HIT, 1f, 1.2f);
-      player.sendMessage("§6[§bBH§6] §aDangle mode enabled.");
       return;
     }
 
@@ -709,7 +730,6 @@ public class PlayerHockeyListener implements Listener {
     }
     player.removePotionEffect(PotionEffectType.POISON);
     player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_BREAK, 1f, 1.0f);
-    player.sendMessage("§6[§bBH§6] §cDangle mode disabled.");
   }
 
   /**
@@ -788,19 +808,21 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(Math.abs(velocity.getZ()) * 0.62);
     }
 
-    // OG-style fallback: when axis motion is suddenly killed by a wall, bounce from previous tick velocity.
-    if (!bounceX && Math.abs(oldVelocity.getX()) > 0.08 && Math.abs(velocity.getX()) < 0.0001) {
+    // Fallback: when axis motion is suddenly killed by a nearby wall, bounce from previous tick velocity.
+    if (!bounceX
+            && Math.abs(oldVelocity.getX()) > 0.08
+            && Math.abs(velocity.getX()) < 0.0001
+            && hasNearbyWallX(puckLoc)) {
       bounceX = true;
       newVelocity.setX(-oldVelocity.getX() * 0.8);
-    } else if (!bounceX && Math.abs(oldVelocity.getX() - velocity.getX()) < 0.1) {
-      newVelocity.setX(oldVelocity.getX() * 0.95);
     }
 
-    if (!bounceZ && Math.abs(oldVelocity.getZ()) > 0.08 && Math.abs(velocity.getZ()) < 0.0001) {
+    if (!bounceZ
+            && Math.abs(oldVelocity.getZ()) > 0.08
+            && Math.abs(velocity.getZ()) < 0.0001
+            && hasNearbyWallZ(puckLoc)) {
       bounceZ = true;
       newVelocity.setZ(-oldVelocity.getZ() * 0.8);
-    } else if (!bounceZ && Math.abs(oldVelocity.getZ() - velocity.getZ()) < 0.1) {
-      newVelocity.setZ(oldVelocity.getZ() * 0.95);
     }
 
     // Small floor bounce from the air (intentionally flat for hockey puck behavior).
@@ -903,6 +925,20 @@ public class PlayerHockeyListener implements Listener {
   private boolean isSolidCollision(Block block) {
     Material type = block.getType();
     return type.isSolid() && !type.isAir();
+  }
+
+  private boolean hasNearbyWallX(Location center) {
+    return isSolidAtOffset(center, 0.34, 0)
+            || isSolidAtOffset(center, 0.58, 0)
+            || isSolidAtOffset(center, -0.34, 0)
+            || isSolidAtOffset(center, -0.58, 0);
+  }
+
+  private boolean hasNearbyWallZ(Location center) {
+    return isSolidAtOffset(center, 0, 0.34)
+            || isSolidAtOffset(center, 0, 0.58)
+            || isSolidAtOffset(center, 0, -0.34)
+            || isSolidAtOffset(center, 0, -0.58);
   }
 
   private void pushPuckOutOfBlock(Slime slime, BlockFace wallFace) {
@@ -1120,11 +1156,22 @@ public class PlayerHockeyListener implements Listener {
     forward.normalize();
     Vector left = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
     Location base = goalie.getLocation().clone().add(forward.clone().multiply(0.58)).add(0, -0.32, 0);
+    float padYaw = goalie.getLocation().getYaw() + 180f;
 
     Location leftPad = base.clone().add(left.clone().multiply(0.29));
     Location rightPad = base.clone().subtract(left.clone().multiply(0.29));
+    leftPad.setYaw(padYaw);
+    rightPad.setYaw(padYaw);
+    leftPad.setPitch(0f);
+    rightPad.setPitch(0f);
     pads.get(0).teleport(leftPad);
     pads.get(1).teleport(rightPad);
+    for (ArmorStand pad : pads) {
+      pad.setHeadPose(new EulerAngle(0, 0, 0));
+      pad.setBodyPose(new EulerAngle(0, 0, 0));
+      pad.setRightArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
+      pad.setLeftArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
+    }
   }
 
   private ArmorStand spawnGoaliePad(Location location) {
@@ -1137,7 +1184,7 @@ public class PlayerHockeyListener implements Listener {
       armorStand.setArms(true);
       armorStand.setSilent(true);
       armorStand.getEquipment().setItemInMainHand(new ItemStack(Material.SHIELD));
-      armorStand.getEquipment().setItemInOffHand(new ItemStack(Material.SHIELD));
+      armorStand.getEquipment().setItemInOffHand(null);
     });
     return stand;
   }

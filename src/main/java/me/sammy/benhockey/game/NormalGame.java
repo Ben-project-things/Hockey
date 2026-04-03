@@ -18,6 +18,8 @@ public class NormalGame extends AbstractGame {
 
   @Override
   public void summonPuck(Location location) {
+    location.setYaw(0f);
+    location.setPitch(0f);
     Slime slimePuck = (Slime) location.getWorld().spawnEntity(location, EntityType.SLIME);
 
     slimePuck.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION,
@@ -31,6 +33,7 @@ public class NormalGame extends AbstractGame {
     slimePuck.setGravity(true);
     slimePuck.setRemoveWhenFarAway(false);
     slimePuck.setPersistent(true);
+    slimePuck.setRotation(0f, 0f);
 
     this.puck = slimePuck;
   }
