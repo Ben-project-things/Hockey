@@ -70,6 +70,7 @@ public class PlayerHockeyListener implements Listener {
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
+  private static final Set<Material> ICE_SURFACES = Set.of(Material.ICE, Material.BLUE_ICE, Material.PACKED_ICE);
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -187,10 +188,6 @@ public class PlayerHockeyListener implements Listener {
     UUID uuid = player.getUniqueId();
 
     if (lobbyManager.isPlayerAKeeper(player) && this.glovedGoalies.contains(uuid)) {
-      Action action = e.getAction();
-      if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-        dropGlovedPuck(player);
-      }
       return;
     }
 
@@ -256,9 +253,14 @@ public class PlayerHockeyListener implements Listener {
       Block head = candidate.clone().add(0, 1, 0).getBlock();
       Block below = candidate.clone().subtract(0, 1, 0).getBlock();
 
-      if (feet.isPassable() && head.isPassable() && !below.isPassable()) {
+      if (feet.isPassable() && head.isPassable() && isIceSurface(below.getType())) {
         return candidate.add(0.5, 0.02, 0.5);
       }
+    }
+
+    Location nearestIce = findNearestIceDrop(goalie, 22);
+    if (nearestIce != null) {
+      return nearestIce;
     }
 
     return world.getHighestBlockAt(base).getLocation().add(0.5, 1.02, 0.5);
@@ -267,7 +269,22 @@ public class PlayerHockeyListener implements Listener {
 
   @EventHandler
   public void onDropHockeyStick(PlayerDropItemEvent e) {
+    Player player = e.getPlayer();
+    UUID playerId = player.getUniqueId();
     ItemStack droppedItem = e.getItemDrop().getItemStack();
+
+    if (lobbyManager.isPlayerAKeeper(player)
+            && this.glovedGoalies.contains(playerId)
+            && droppedItem.getType() == Material.SLIME_BALL
+            && droppedItem.hasItemMeta()
+            && droppedItem.getItemMeta() != null
+            && GLOVED_PUCK_NAME.equals(droppedItem.getItemMeta().getDisplayName())) {
+      e.setCancelled(true);
+      e.getItemDrop().remove();
+      dropGlovedPuck(player);
+      return;
+    }
+
     if (!isHockeyStick(droppedItem)) {
       return;
     }
@@ -575,17 +592,17 @@ public class PlayerHockeyListener implements Listener {
     UUID slimeId = slime.getUniqueId();
     double landingY = slime.getLocation().getY();
     Double peakY = this.puckAirbornePeakY.remove(slimeId);
-    if (peakY == null || peakY - landingY < 1.5) {
+    if (peakY == null || peakY - landingY < 0.45) {
       return;
     }
 
     Vector velocity = slime.getVelocity();
-    if (velocity.getY() > 0.05 || previousVerticalVelocity > -0.33) {
+    if (velocity.getY() > 0.05 || previousVerticalVelocity > -0.08) {
       return;
     }
 
-    double bounceY = Math.min(0.24, Math.abs(previousVerticalVelocity) * 0.22);
-    if (bounceY < 0.08) {
+    double bounceY = Math.min(0.16, Math.abs(previousVerticalVelocity) * 0.28);
+    if (bounceY < 0.05) {
       return;
     }
 
@@ -786,14 +803,14 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Vector velocity = slime.getVelocity();
-    if (velocity.lengthSquared() < 0.01) {
+    if (velocity.lengthSquared() < 0.004) {
       return;
     }
 
     UUID slimeId = slime.getUniqueId();
     long now = System.currentTimeMillis();
     long lastBounce = this.recentGoalieBounceMillis.getOrDefault(slimeId, 0L);
-    if (now - lastBounce < 120L) {
+    if (now - lastBounce < 250L) {
       return;
     }
 
@@ -832,20 +849,20 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector reflectedHorizontal = incomingHorizontal.clone()
-              .subtract(collisionNormal.clone().multiply(2 * incomingHorizontal.dot(collisionNormal)));
-      double reboundSpeed = Math.max(0.26, incomingHorizontal.length() * 0.86);
-      if (reflectedHorizontal.lengthSquared() < 0.0001) {
-        reflectedHorizontal = collisionNormal.clone();
+      int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
+      double horizontalStrength = 0.95 + (hitLevel * 0.45);
+      Vector playerSpeed = player.getVelocity().clone().setY(0).multiply(0.75);
+      Vector knockback = collisionNormal.clone().multiply(horizontalStrength).add(playerSpeed);
+      if (knockback.lengthSquared() < 0.0001) {
+        knockback = collisionNormal.clone().multiply(horizontalStrength);
       }
-      reflectedHorizontal.normalize().multiply(reboundSpeed);
 
-      Vector reflected = reflectedHorizontal.clone();
-      reflected.setY(Math.max(0.02, Math.abs(velocity.getY()) * 0.35));
-      slime.setVelocity(reflected);
+      Vector bounced = knockback.clone();
+      bounced.setY(Math.max(0.07, Math.abs(velocity.getY()) * 0.35));
+      slime.setVelocity(bounced);
 
-      Vector pushDirection = collisionNormal.clone().multiply(player.isSneaking() ? 0.74 : 0.58);
-      Location pushOut = puckLoc.clone().add(pushDirection);
+      Vector pushDirection = collisionNormal.clone().multiply(player.isSneaking() ? 0.92 : 0.76);
+      Location pushOut = puckLoc.clone().add(pushDirection.setY(0));
       slime.teleport(pushOut);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
 
@@ -932,7 +949,7 @@ public class PlayerHockeyListener implements Listener {
       }
 
       Rink rink = this.lobbyManager.getPlayerRink(online);
-      if (rink == null || rink.getGameState() != GameState.GAME) {
+      if (rink == null) {
         continue;
       }
 
@@ -1111,5 +1128,59 @@ public class PlayerHockeyListener implements Listener {
 
   private boolean isHockeyStickName(String displayName) {
     return HOCKEY_STICK_NAME.equals(displayName) || GOALIE_STICK_NAME.equals(displayName);
+  }
+
+  private boolean isIceSurface(Material material) {
+    return ICE_SURFACES.contains(material);
+  }
+
+  private Location findNearestIceDrop(Player goalie, int maxRadius) {
+    Location origin = goalie.getLocation();
+    World world = origin.getWorld();
+    if (world == null) {
+      return null;
+    }
+
+    Location best = null;
+    double bestDistance = Double.MAX_VALUE;
+    int baseX = origin.getBlockX();
+    int baseY = origin.getBlockY();
+    int baseZ = origin.getBlockZ();
+
+    for (int radius = 0; radius <= maxRadius; radius++) {
+      for (int x = -radius; x <= radius; x++) {
+        for (int z = -radius; z <= radius; z++) {
+          int worldX = baseX + x;
+          int worldZ = baseZ + z;
+
+          for (int y = baseY + 2; y >= baseY - 6; y--) {
+            Block below = world.getBlockAt(worldX, y, worldZ);
+            if (!isIceSurface(below.getType())) {
+              continue;
+            }
+
+            Block feet = below.getRelative(BlockFace.UP);
+            Block head = feet.getRelative(BlockFace.UP);
+            if (!feet.isPassable() || !head.isPassable()) {
+              continue;
+            }
+
+            Location candidate = below.getLocation().add(0.5, 1.02, 0.5);
+            double distance = candidate.distanceSquared(origin);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              best = candidate;
+            }
+            break;
+          }
+        }
+      }
+
+      if (best != null) {
+        return best;
+      }
+    }
+
+    return null;
   }
 }
