@@ -803,7 +803,7 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      double horizontalHalf = player.isSneaking() ? 0.80 : 0.50;
+      double horizontalHalf = player.isSneaking() ? 0.82 : 0.56;
       double topY = player.getLocation().getY() + 2.0;
       double bottomY = player.getLocation().getY() - 0.2;
 
@@ -816,21 +816,38 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector facing = player.getLocation().getDirection().setY(0);
-      if (facing.lengthSquared() < 0.0001) {
-        facing = new Vector(0, 0, 1);
+      Vector goalieCenter = player.getLocation().clone().add(0, 1.0, 0).toVector();
+      Vector toPuck = puckLoc.toVector().subtract(goalieCenter).setY(0);
+      if (toPuck.lengthSquared() < 0.0001) {
+        toPuck = player.getLocation().getDirection().setY(0);
       }
-      Vector reboundDirection = facing.normalize();
-      double incomingSpeed = velocity.clone().setY(0).length();
-      double reboundSpeed = Math.max(0.14, incomingSpeed * 0.62);
-      Vector reflected = reboundDirection.multiply(reboundSpeed);
-      reflected.setY(Math.max(0.02, Math.abs(velocity.getY()) * 0.22));
+
+      Vector collisionNormal = toPuck.normalize();
+      Vector incomingHorizontal = velocity.clone().setY(0);
+      if (incomingHorizontal.lengthSquared() < 0.0001) {
+        continue;
+      }
+      Vector incomingDirection = incomingHorizontal.clone().normalize();
+      if (incomingDirection.dot(collisionNormal) >= -0.08) {
+        continue;
+      }
+
+      Vector reflectedHorizontal = incomingHorizontal.clone()
+              .subtract(collisionNormal.clone().multiply(2 * incomingHorizontal.dot(collisionNormal)));
+      double reboundSpeed = Math.max(0.26, incomingHorizontal.length() * 0.86);
+      if (reflectedHorizontal.lengthSquared() < 0.0001) {
+        reflectedHorizontal = collisionNormal.clone();
+      }
+      reflectedHorizontal.normalize().multiply(reboundSpeed);
+
+      Vector reflected = reflectedHorizontal.clone();
+      reflected.setY(Math.max(0.02, Math.abs(velocity.getY()) * 0.35));
       slime.setVelocity(reflected);
 
-      Location pushOut = puckLoc.clone().add(reflected.clone().setY(0).normalize()
-              .multiply(player.isSneaking() ? 0.64 : 0.48));
+      Vector pushDirection = collisionNormal.clone().multiply(player.isSneaking() ? 0.74 : 0.58);
+      Location pushOut = puckLoc.clone().add(pushDirection);
       slime.teleport(pushOut);
-      slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 30f, 1.35f);
+      slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
 
       this.recentGoalieBounceMillis.put(slimeId, now);
       break;
@@ -952,10 +969,10 @@ public class PlayerHockeyListener implements Listener {
     }
     forward.normalize();
     Vector left = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
-    Location base = goalie.getLocation().clone().add(forward.clone().multiply(0.40)).add(0, 0.05, 0);
+    Location base = goalie.getLocation().clone().add(forward.clone().multiply(0.58)).add(0, -0.32, 0);
 
-    Location leftPad = base.clone().add(left.clone().multiply(0.40));
-    Location rightPad = base.clone().subtract(left.clone().multiply(0.40));
+    Location leftPad = base.clone().add(left.clone().multiply(0.29));
+    Location rightPad = base.clone().subtract(left.clone().multiply(0.29));
     pads.get(0).teleport(leftPad);
     pads.get(1).teleport(rightPad);
   }
@@ -964,10 +981,13 @@ public class PlayerHockeyListener implements Listener {
     ArmorStand stand = location.getWorld().spawn(location, ArmorStand.class, armorStand -> {
       armorStand.setInvisible(true);
       armorStand.setGravity(false);
-      armorStand.setMarker(true);
-      armorStand.setSmall(true);
+      armorStand.setMarker(false);
+      armorStand.setSmall(false);
+      armorStand.setBasePlate(false);
+      armorStand.setArms(true);
       armorStand.setSilent(true);
-      armorStand.getEquipment().setBoots(new ItemStack(Material.IRON_BOOTS));
+      armorStand.getEquipment().setItemInMainHand(new ItemStack(Material.SHIELD));
+      armorStand.getEquipment().setItemInOffHand(new ItemStack(Material.SHIELD));
     });
     return stand;
   }
@@ -1028,7 +1048,26 @@ public class PlayerHockeyListener implements Listener {
     }
 
     this.resetPower(damager);
-    e.setDamage(0);
+    e.setCancelled(true);
+
+    int hitLevel = Math.max(1, Math.min(3, damager.getLevel()));
+    Vector push = damaged.getLocation().toVector().subtract(damager.getLocation().toVector()).setY(0);
+    if (push.lengthSquared() < 0.0001) {
+      push = damager.getLocation().getDirection().setY(0);
+    }
+    if (push.lengthSquared() < 0.0001) {
+      push = new Vector(0, 0, 1);
+    }
+
+    double horizontalStrength = 0.95 + (hitLevel * 0.45);
+    Vector knockback = push.normalize().multiply(horizontalStrength);
+
+    double currentY = damaged.getVelocity().getY();
+    double lift = damaged.isOnGround() ? (0.08 + hitLevel * 0.06) : (0.16 + hitLevel * 0.08);
+    knockback.setY(Math.max(currentY, lift));
+
+    damaged.setVelocity(knockback);
+    damaged.getWorld().playSound(damaged.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1f, 0.9f + (hitLevel * 0.07f));
   }
 
   /**
