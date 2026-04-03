@@ -583,6 +583,16 @@ public class Rink {
   }
 
   /**
+   * Adds a shot-on-target stat to the shooter.
+   * @param p is the shooter
+   */
+  public void addShotOnTarget(Player p) {
+    if (this.game != null && this.state == GameState.GAME) {
+      this.game.addShotOnTarget(p);
+    }
+  }
+
+  /**
    * Updates the time of the current game.
    * @param time is the time to change it to.
    * @param p is the player that sent the command
