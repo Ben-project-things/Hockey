@@ -683,6 +683,25 @@ public abstract class AbstractGame implements Game {
   }
 
   /**
+   * Gets the formatted time.
+   * - If ≥ 1 minute: shows m:ss
+   * - If < 1 minute: shows s.s
+   * @param milliseconds total milliseconds remaining
+   * @return formatted time string
+   */
+  private String formatTime(int milliseconds) {
+    int safeMilliseconds = Math.max(0, milliseconds);
+    int totalSeconds = safeMilliseconds / 1000;
+
+    if (totalSeconds >= 60) {
+      return formatClock(totalSeconds);
+    }
+
+    double secondsWithMillis = safeMilliseconds / 1000.0;
+    return String.format("%.1f", secondsWithMillis);
+  }
+
+  /**
    * Ends a player's penalty.
    * @param uuid is the uuids of the player to end.
    */
