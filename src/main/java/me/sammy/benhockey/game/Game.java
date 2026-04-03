@@ -74,6 +74,12 @@ public interface Game {
   void addLastHit(Player player);
 
   /**
+   * Adds a shot-on-target stat for the given player.
+   * @param player is the shooter to credit
+   */
+  void addShotOnTarget(Player player);
+
+  /**
    * Skip the face off timer delay between periods and goals.
    */
   void skipFaceOff(Player player);

@@ -467,6 +467,11 @@ public abstract class AbstractGame implements Game {
     }
   }
 
+  @Override
+  public void addShotOnTarget(Player player) {
+    getOrCreateStats(player).addShotOnTarget();
+  }
+
   /**
    * Creates a new game stats for a player once they do an action.
    * @param p is the player to create or add stats to their game stats

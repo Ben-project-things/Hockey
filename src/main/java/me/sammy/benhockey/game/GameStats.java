@@ -16,6 +16,7 @@ public class GameStats {
   private int assists;
   private int touches;
   private int saves;
+  private int shotsOnTarget;
 
   public GameStats(UUID id, String team, boolean goalie) {
     this.playerId = id;
@@ -25,6 +26,7 @@ public class GameStats {
     this.assists = 0;
     this.touches = 0;
     this.saves = 0;
+    this.shotsOnTarget = 0;
   }
 
   public void addGoal() {
@@ -41,6 +43,10 @@ public class GameStats {
 
   public int getPoints() {
     return goals + assists;
+  }
+
+  public void addShotOnTarget() {
+    this.shotsOnTarget++;
   }
 
   public String getTeam() {
@@ -60,11 +66,11 @@ public class GameStats {
     String name = p.getName() != null ? p.getName() : "Unknown";
 
     if (this.goalie) {
-      return String.format("§b%s §a| §7%d Points §a| §7%d Saves §a| §7%d Assists §a| §7%d Touches",
-              name, getPoints(), this.saves, this.assists, this.touches);
+      return String.format("§b%s §a| §7%d Points §a| §7%d Saves §a| §7%d SOG §a| §7%d Assists §a| §7%d Touches",
+              name, getPoints(), this.saves, this.shotsOnTarget, this.assists, this.touches);
     } else {
-      return String.format("§b%s §a| §7%d Points §a| §7%d Goals §a| §7%d Assists §a| §7%d Touches",
-              name, getPoints(), this.goals, this.assists, this.touches);
+      return String.format("§b%s §a| §7%d Points §a| §7%d Goals §a| §7%d SOG §a| §7%d Assists §a| §7%d Touches",
+              name, getPoints(), this.goals, this.shotsOnTarget, this.assists, this.touches);
     }
   }
 
