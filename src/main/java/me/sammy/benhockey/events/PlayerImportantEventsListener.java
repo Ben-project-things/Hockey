@@ -408,7 +408,12 @@ public class PlayerImportantEventsListener implements Listener {
   }
 
   private void openRefMenu(Player player) {
-    Inventory inv = Bukkit.createInventory(null, 27, REF_MENU_TITLE);
+    Inventory inv = Bukkit.createInventory(null, 36, REF_MENU_TITLE);
+    ItemStack filler = createMenuItem(Material.BLACK_STAINED_GLASS_PANE, " ");
+    for (int slot = 0; slot < inv.getSize(); slot++) {
+      inv.setItem(slot, filler);
+    }
+
     inv.setItem(10, createMenuItem(Material.IRON_SWORD, "§aToggle Hitting"));
     inv.setItem(11, createMenuItem(Material.CHAIN, "§cLock/Unlock Teams"));
     inv.setItem(12, createMenuItem(Material.PAPER, "§bSet Home Name"));
