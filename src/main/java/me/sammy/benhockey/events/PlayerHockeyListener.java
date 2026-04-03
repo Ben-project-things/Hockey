@@ -677,7 +677,8 @@ public class PlayerHockeyListener implements Listener {
       }
 
       slime.setVelocity(newVelocity);
-      slime.getWorld().playSound(puckLoc, Sound.BLOCK_DEEPSLATE_TILES_BREAK, 100f, 0.2f);
+      Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
+      slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
       return;
     }
 
@@ -686,6 +687,45 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(newVelocity.getZ() * 0.94);
     }
     slime.setVelocity(newVelocity);
+  }
+
+  private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
+      double lookAheadX, double lookAheadZ) {
+    List<Material> collisionMaterials = new ArrayList<>();
+
+    if (bounceX) {
+      if (velocity.getX() > 0) {
+        addCollisionMaterial(collisionMaterials, puckLoc, 0.34, 0);
+        addCollisionMaterial(collisionMaterials, puckLoc, 0.34 + lookAheadX, 0);
+      } else if (velocity.getX() < 0) {
+        addCollisionMaterial(collisionMaterials, puckLoc, -0.34, 0);
+        addCollisionMaterial(collisionMaterials, puckLoc, -0.34 - lookAheadX, 0);
+      }
+    }
+
+    if (bounceZ) {
+      if (velocity.getZ() > 0) {
+        addCollisionMaterial(collisionMaterials, puckLoc, 0, 0.34);
+        addCollisionMaterial(collisionMaterials, puckLoc, 0, 0.34 + lookAheadZ);
+      } else if (velocity.getZ() < 0) {
+        addCollisionMaterial(collisionMaterials, puckLoc, 0, -0.34);
+        addCollisionMaterial(collisionMaterials, puckLoc, 0, -0.34 - lookAheadZ);
+      }
+    }
+
+    for (Material material : collisionMaterials) {
+      if (material == Material.RED_CONCRETE || material == Material.BLUE_CONCRETE) {
+        return Sound.BLOCK_BELL_PLACE;
+      }
+    }
+
+    for (Material material : collisionMaterials) {
+      if (material.name().contains("GLASS")) {
+        return Sound.BLOCK_GLASS_PLACE;
+      }
+    }
+
+    return Sound.BLOCK_DEEPSLATE_TILES_BREAK;
   }
 
   private boolean isSolidAtOffset(Location center, double xOffset, double zOffset) {
@@ -697,6 +737,17 @@ public class PlayerHockeyListener implements Listener {
       }
     }
     return false;
+  }
+
+  private void addCollisionMaterial(List<Material> collisionMaterials, Location center, double xOffset, double zOffset) {
+    double[] yOffsets = {0.18, 0.45, 0.78, 1.08};
+    for (double yOffset : yOffsets) {
+      Block check = center.clone().add(xOffset, yOffset, zOffset).getBlock();
+      if (isSolidCollision(check)) {
+        collisionMaterials.add(check.getType());
+        return;
+      }
+    }
   }
 
   private boolean isSolidCollision(Block block) {
