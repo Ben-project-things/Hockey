@@ -32,6 +32,8 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
@@ -39,6 +41,7 @@ import org.bukkit.util.Vector;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -67,10 +70,15 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Double> lastPuckVerticalVelocity = new HashMap<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Map<UUID, Double> puckAirbornePeakY = new HashMap<>();
+  private final Set<UUID> dangleModePlayers = new HashSet<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
-  private static final Set<Material> ICE_SURFACES = Set.of(Material.ICE, Material.BLUE_ICE, Material.PACKED_ICE);
+  private static final String POSSESSION_YES = "§aYour team has possession";
+  private static final String POSSESSION_NO = "§cYour team does not have possession";
+  private static final Set<Material> ICE_SURFACES = new HashSet<Material>(
+          Arrays.asList(Material.ICE, Material.BLUE_ICE, Material.PACKED_ICE)
+  );
 
   public PlayerHockeyListener(LobbyManager lobbyManager, JavaPlugin plugin) {
     this.lobbyManager = lobbyManager;
@@ -80,6 +88,7 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onPlayerLeave(PlayerQuitEvent e) {
     this.charges.remove(e.getPlayer().getUniqueId());
+    this.dangleModePlayers.remove(e.getPlayer().getUniqueId());
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
   }
@@ -97,6 +106,14 @@ public class PlayerHockeyListener implements Listener {
     } else {
       p.setExp(0.0f);
       charges.remove(p.getUniqueId());
+    }
+
+    if (lobbyManager.isPlayerAKeeper(p)) {
+      if (e.isSneaking()) {
+        ensureAndPositionGoaliePads(p);
+      } else {
+        clearGoaliePads(p.getUniqueId());
+      }
     }
   }
 
@@ -290,6 +307,20 @@ public class PlayerHockeyListener implements Listener {
     }
 
     e.setCancelled(true);
+    e.getItemDrop().remove();
+
+    Rink rink = this.lobbyManager.getPlayerRink(player);
+    if (rink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
+      return;
+    }
+
+    if (rink.getGameState() == GameState.GAME && !rink.hasPossession(player)) {
+      player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.6f);
+      player.sendMessage("§6[§bBH§6] §cYou can only dangle when your team has possession.");
+      return;
+    }
+
+    setDangleMode(player, !this.dangleModePlayers.contains(playerId));
   }
 
   /**
@@ -342,10 +373,45 @@ public class PlayerHockeyListener implements Listener {
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
 
     double charge = this.charges.getOrDefault(player.getUniqueId(), 0.0);
-    double extraY = charge * 0.65;
+    int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
+    boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
 
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+      if (slime.isDead() || !slime.isValid()) {
+        return;
+      }
+
       Vector updatedVelocity = slime.getVelocity();
+      if (dangleMode) {
+        Vector forward = player.getLocation().getDirection().setY(0);
+        if (forward.lengthSquared() < 0.0001) {
+          forward = new Vector(0, 0, 1);
+        }
+        forward.normalize();
+
+        if (hitLevel == 1) {
+          Vector smallPush = forward.multiply(0.27);
+          smallPush.setY(0.01);
+          slime.setVelocity(smallPush);
+          return;
+        }
+
+        if (hitLevel == 2) {
+          Vector pull = forward.multiply(-0.33);
+          pull.setY(0.02);
+          slime.setVelocity(pull);
+          return;
+        }
+
+        Vector boosted = updatedVelocity.clone();
+        boosted.setX(boosted.getX() * 1.25);
+        boosted.setZ(boosted.getZ() * 1.25);
+        boosted.setY(boosted.getY() + (charge * 0.2));
+        slime.setVelocity(boosted);
+        return;
+      }
+
+      double extraY = charge * 0.65;
       updatedVelocity.setY(updatedVelocity.getY() + extraY);
       slime.setVelocity(updatedVelocity);
     }, 1L);
@@ -468,6 +534,22 @@ public class PlayerHockeyListener implements Listener {
   }
 
   @EventHandler
+  public void onDanglePoisonDamage(EntityDamageEvent e) {
+    if (!(e.getEntity() instanceof Player)) {
+      return;
+    }
+
+    if (e.getCause() != EntityDamageEvent.DamageCause.POISON) {
+      return;
+    }
+
+    Player player = (Player) e.getEntity();
+    if (this.dangleModePlayers.contains(player.getUniqueId())) {
+      e.setCancelled(true);
+    }
+  }
+
+  @EventHandler
   public void onPlayerSwapHandItems(PlayerSwapHandItemsEvent e) {
     Player player = e.getPlayer();
 
@@ -505,6 +587,8 @@ public class PlayerHockeyListener implements Listener {
    * Runs the updates for when a player is shifting and increases their xp bar.
    */
   public void update() {
+    updatePossessionIndicators();
+
     for (UUID uuid : this.charges.keySet()) {
       Player p = this.plugin.getServer().getPlayer(uuid);
       if (p == null) {
@@ -577,6 +661,55 @@ public class PlayerHockeyListener implements Listener {
     }
 
     updateGoaliePads();
+  }
+
+  private void updatePossessionIndicators() {
+    for (Player player : Bukkit.getOnlinePlayers()) {
+      if (this.lobbyManager.isPlayerInLobby(player)) {
+        continue;
+      }
+
+      Rink rink = this.lobbyManager.getPlayerRink(player);
+      if (rink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
+        continue;
+      }
+
+      boolean hasPossession = rink.hasPossession(player);
+      ItemStack indicator = new ItemStack(hasPossession ? Material.LIME_DYE : Material.RED_DYE);
+      ItemMeta meta = indicator.getItemMeta();
+      if (meta != null) {
+        meta.setDisplayName(hasPossession ? POSSESSION_YES : POSSESSION_NO);
+        indicator.setItemMeta(meta);
+      }
+
+      player.getInventory().setItem(4, indicator);
+
+      if (rink.getGameState() == GameState.GAME
+              && this.dangleModePlayers.contains(player.getUniqueId())
+              && !hasPossession) {
+        setDangleMode(player, false);
+      }
+    }
+  }
+
+  private void setDangleMode(Player player, boolean enabled) {
+    UUID playerId = player.getUniqueId();
+    if (enabled) {
+      if (!this.dangleModePlayers.add(playerId)) {
+        return;
+      }
+      player.addPotionEffect(new PotionEffect(PotionEffectType.POISON, Integer.MAX_VALUE, 0, false, false, false));
+      player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_HIT, 1f, 1.2f);
+      player.sendMessage("§6[§bBH§6] §aDangle mode enabled.");
+      return;
+    }
+
+    if (!this.dangleModePlayers.remove(playerId)) {
+      return;
+    }
+    player.removePotionEffect(PotionEffectType.POISON);
+    player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_BREAK, 1f, 1.0f);
+    player.sendMessage("§6[§bBH§6] §cDangle mode disabled.");
   }
 
   /**

@@ -80,6 +80,12 @@ public interface Game {
   void addShotOnTarget(Player player);
 
   /**
+   * Gets the player that most recently touched the puck for this game.
+   * @return last touching player, or null if no touches yet
+   */
+  Player getLastTouchPlayer();
+
+  /**
    * Skip the face off timer delay between periods and goals.
    */
   void skipFaceOff(Player player);
