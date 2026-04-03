@@ -715,7 +715,7 @@ public class PlayerHockeyListener implements Listener {
 
     for (Material material : collisionMaterials) {
       if (material == Material.RED_CONCRETE || material == Material.BLUE_CONCRETE) {
-        return Sound.BLOCK_BELL_PLACE;
+        return Sound.BLOCK_BELL_USE;
       }
     }
 
