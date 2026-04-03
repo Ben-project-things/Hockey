@@ -720,10 +720,13 @@ public class Rink {
         this.personalPucks.remove(playerId);
       } else {
         existingPuck.teleport(spawnLocation);
+        existingPuck.setRotation(0f, 0f);
         return;
       }
     }
 
+    spawnLocation.setYaw(0f);
+    spawnLocation.setPitch(0f);
     Slime newPuck = (Slime) p.getWorld().spawnEntity(spawnLocation, EntityType.SLIME);
     newPuck.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION,
             Integer.MAX_VALUE, 150, false, false));
@@ -736,6 +739,7 @@ public class Rink {
     newPuck.setGravity(true);
     newPuck.setRemoveWhenFarAway(false);
     newPuck.setPersistent(true);
+    newPuck.setRotation(0f, 0f);
 
     this.personalPucks.put(playerId, newPuck);
   }
