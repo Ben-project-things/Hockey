@@ -472,6 +472,16 @@ public abstract class AbstractGame implements Game {
     getOrCreateStats(player).addShotOnTarget();
   }
 
+  @Override
+  public Player getLastTouchPlayer() {
+    if (this.lastHits.isEmpty()) {
+      return null;
+    }
+
+    return this.lastHits.getFirst();
+  }
+
+
   /**
    * Creates a new game stats for a player once they do an action.
    * @param p is the player to create or add stats to their game stats

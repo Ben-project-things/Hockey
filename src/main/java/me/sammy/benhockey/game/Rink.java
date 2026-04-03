@@ -583,6 +583,38 @@ public class Rink {
   }
 
   /**
+   * Gets the team string for the player who most recently touched the puck in-game.
+   * @return "home", "away", or "none" if unavailable
+   */
+  public String getLastTouchTeam() {
+    if (this.game == null) {
+      return "none";
+    }
+
+    Player lastTouch = this.game.getLastTouchPlayer();
+    if (lastTouch == null) {
+      return "none";
+    }
+
+    return this.getTeam(lastTouch);
+  }
+
+  /**
+   * Returns whether the given player is currently on the same team as the most recent puck touch.
+   * @param player is the player to evaluate possession for
+   * @return true if player's team has possession
+   */
+  public boolean hasPossession(Player player) {
+    String playerTeam = this.getTeam(player);
+    if (!"home".equalsIgnoreCase(playerTeam) && !"away".equalsIgnoreCase(playerTeam)) {
+      return false;
+    }
+
+    String lastTouchTeam = this.getLastTouchTeam();
+    return playerTeam.equalsIgnoreCase(lastTouchTeam);
+  }
+
+  /**
    * Adds a shot-on-target stat to the shooter.
    * @param p is the shooter
    */

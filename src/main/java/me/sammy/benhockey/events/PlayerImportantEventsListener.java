@@ -298,12 +298,18 @@ public class PlayerImportantEventsListener implements Listener {
     }
 
     if (item.getType() == Material.STICK  &&
-            "§aHockey Stick".equals(displayName)) {
+            ("§aHockey Stick".equals(displayName) || "§bGoalie Stick".equals(displayName))) {
       return true;
     }
 
     if (item.getType() == Material.SLIME_BALL &&
             "§bGloved Puck".equals(displayName)) {
+      return true;
+    }
+
+    if ((item.getType() == Material.LIME_DYE || item.getType() == Material.RED_DYE) &&
+            ("§aYour team has possession".equals(displayName)
+                    || "§cYour team does not have possession".equals(displayName))) {
       return true;
     }
 
@@ -317,7 +323,9 @@ public class PlayerImportantEventsListener implements Listener {
     }
 
     ItemStack item = e.getOldCursor();
-    if (item.getType() == Material.STICK && item.hasItemMeta() && "§aHockey Stick".equals(item.getItemMeta().getDisplayName())) {
+    if (item.getType() == Material.STICK && item.hasItemMeta()
+            && ("§aHockey Stick".equals(item.getItemMeta().getDisplayName())
+            || "§bGoalie Stick".equals(item.getItemMeta().getDisplayName()))) {
       e.setCancelled(true);
     }
 
