@@ -1,6 +1,7 @@
 package me.sammy.benhockey.events;
 
 import org.bukkit.Bukkit;
+import org.bukkit.EntityEffect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -393,7 +394,7 @@ public class PlayerHockeyListener implements Listener {
     this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
     if (dangleMode) {
-      e.setCancelled(true);
+      slime.playEffect(EntityEffect.HURT);
       slime.setNoDamageTicks(0);
     } else {
       e.setDamage(0.0);
