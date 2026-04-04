@@ -64,6 +64,7 @@ public class PlayerHockeyListener implements Listener {
   private final JavaPlugin plugin;
   private final Set<UUID> rightClickCooldown = new HashSet<>();
   private final Set<UUID> slideCooldown = new HashSet<>();
+  private final Map<UUID, Integer> goalieSlideCooldownTicks = new HashMap<>();
   private final Map<UUID, Slime> goalieGloveSlime = new HashMap<>();
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
   private final Set<UUID> glovedGoalies = new HashSet<>();
@@ -90,6 +91,7 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onPlayerLeave(PlayerQuitEvent e) {
     this.charges.remove(e.getPlayer().getUniqueId());
+    this.goalieSlideCooldownTicks.remove(e.getPlayer().getUniqueId());
     this.dangleModePlayers.remove(e.getPlayer().getUniqueId());
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
@@ -161,6 +163,7 @@ public class PlayerHockeyListener implements Listener {
 
     p.getInventory().setHeldItemSlot(0);
     this.slideCooldown.add(uuid);
+    this.goalieSlideCooldownTicks.put(uuid, 20);
     Bukkit.getScheduler().runTaskLater(plugin, () -> slideCooldown.remove(uuid), 20L);
     p.playSound(p.getLocation(), Sound.BLOCK_SCAFFOLDING_PLACE, 50f, 1.2f);
   }
@@ -387,13 +390,10 @@ public class PlayerHockeyListener implements Listener {
     boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
     this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
-
-    if (!dangleMode) {
-      return;
-    }
-
     e.setCancelled(true);
     slime.setNoDamageTicks(0);
+    playPuckHitEffect(slime, dangleMode);
+    applySkaterHitLift(player);
 
     double charge = this.charges.getOrDefault(player.getUniqueId(), 0.0);
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
@@ -412,31 +412,62 @@ public class PlayerHockeyListener implements Listener {
       }
       forward.normalize();
 
-      if (hitLevel == 1) {
-        Vector smallPush = forward.multiply(0.34);
-        smallPush.setY(0.01);
-        slime.setVelocity(smallPush);
-        return;
-      }
-
-      if (hitLevel == 2) {
+      if (dangleMode && hitLevel == 2) {
         Vector pull = updatedVelocity.clone();
         pull.setX(-pull.getX());
         pull.setZ(-pull.getZ());
+        pull.multiply(1.12);
         if (pull.clone().setY(0).lengthSquared() < 0.30) {
-          pull = forward.clone().multiply(-0.56);
+          pull = forward.clone().multiply(-0.62);
         }
-        pull.setY(0.02);
+        pull.setY(0.03);
         slime.setVelocity(pull);
         return;
       }
 
-      Vector boosted = updatedVelocity.clone();
-      boosted.setX(boosted.getX() * 1.75);
-      boosted.setZ(boosted.getZ() * 1.75);
-      boosted.setY(boosted.getY() + (charge * 0.2));
-      slime.setVelocity(boosted);
+      double basePower;
+      switch (hitLevel) {
+        case 1:
+          basePower = 1.02;
+          break;
+        case 2:
+          basePower = 1.32;
+          break;
+        default:
+          basePower = 1.72;
+          break;
+      }
+      if (dangleMode) {
+        basePower += 0.14;
+      }
+
+      Vector hitVelocity = forward.multiply(basePower);
+      hitVelocity.setY(0.02 + (charge * (dangleMode ? 0.24 : 0.18)));
+      slime.setVelocity(hitVelocity);
     }, 1L);
+  }
+
+  private void applySkaterHitLift(Player player) {
+    if (this.lobbyManager.isPlayerAKeeper(player)) {
+      return;
+    }
+
+    float xp = player.getExp();
+    if (xp <= 0.01f) {
+      return;
+    }
+
+    Vector velocity = player.getVelocity();
+    double lift = 0.07 + (xp * 0.30);
+    velocity.setY(Math.max(velocity.getY(), lift));
+    player.setVelocity(velocity);
+  }
+
+  private void playPuckHitEffect(Slime slime, boolean dangleMode) {
+    Location hitLoc = slime.getLocation().clone().add(0, 0.25, 0);
+    Particle particle = dangleMode ? Particle.SWEEP_ATTACK : Particle.CRIT;
+    slime.getWorld().spawnParticle(particle, hitLoc, dangleMode ? 2 : 4, 0.14, 0.06, 0.14, 0.01);
+    slime.getWorld().playSound(hitLoc, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.65f, dangleMode ? 1.4f : 1.1f);
   }
 
   //TODO Fix this
@@ -631,6 +662,24 @@ public class PlayerHockeyListener implements Listener {
 
       this.charges.put(uuid, nextCharge);
       p.setExp((float) nextCharge);
+    }
+
+    for (UUID uuid : new HashSet<>(this.goalieSlideCooldownTicks.keySet())) {
+      Player goalie = this.plugin.getServer().getPlayer(uuid);
+      Integer ticksLeft = this.goalieSlideCooldownTicks.get(uuid);
+      if (goalie == null || ticksLeft == null || !goalie.isOnline() || !this.lobbyManager.isPlayerAKeeper(goalie)) {
+        this.goalieSlideCooldownTicks.remove(uuid);
+        continue;
+      }
+
+      if (ticksLeft <= 0) {
+        goalie.setExp(0.0f);
+        this.goalieSlideCooldownTicks.remove(uuid);
+        continue;
+      }
+
+      goalie.setExp(Math.min(1.0f, ticksLeft / 20.0f));
+      this.goalieSlideCooldownTicks.put(uuid, ticksLeft - 1);
     }
 
     Set<UUID> livePucks = new HashSet<>();
@@ -986,7 +1035,8 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Vector velocity = slime.getVelocity();
-    double speed = velocity.length();
+    Vector incomingVelocity = this.lastPuckVelocity.getOrDefault(slime.getUniqueId(), velocity).clone();
+    double speed = incomingVelocity.length();
     if (speed < 0.04) {
       return;
     }
@@ -1024,11 +1074,11 @@ public class PlayerHockeyListener implements Listener {
       }
       facing.normalize();
 
-      Vector bounced = facing.clone().multiply(speed);
-      bounced.setY(velocity.getY());
+      Vector bounced = facing.clone().multiply(Math.max(speed, 0.22));
+      bounced.setY(incomingVelocity.getY());
       slime.setVelocity(bounced);
 
-      Vector pushDirection = facing.clone().multiply(player.isSneaking() ? 0.42 : 0.34);
+      Vector pushDirection = facing.clone().multiply(player.isSneaking() ? 0.58 : 0.48);
       Location pushOut = puckLoc.clone().add(pushDirection.setY(0));
       slime.teleport(pushOut);
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
@@ -1183,7 +1233,8 @@ public class PlayerHockeyListener implements Listener {
       armorStand.setSilent(true);
       armorStand.setInvulnerable(true);
       armorStand.setCollidable(false);
-      armorStand.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_BOOTS));
+      armorStand.getEquipment().setBoots(new ItemStack(Material.IRON_BOOTS));
+      armorStand.getEquipment().setItemInMainHand(null);
       armorStand.getEquipment().setItemInOffHand(null);
     });
     return stand;
