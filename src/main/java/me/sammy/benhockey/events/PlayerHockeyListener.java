@@ -398,8 +398,6 @@ public class PlayerHockeyListener implements Listener {
     } else {
       e.setDamage(0.0);
     }
-    playPuckHitEffect(slime, dangleMode);
-    applySkaterHitLift(player);
 
     double charge = getShiftCharge(player);
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
@@ -462,35 +460,11 @@ public class PlayerHockeyListener implements Listener {
     }, 1L);
   }
 
-  private void applySkaterHitLift(Player player) {
-    if (this.lobbyManager.isPlayerAKeeper(player)) {
-      return;
-    }
-
-    double charge = getShiftCharge(player);
-    if (charge <= 0.01) {
-      return;
-    }
-
-    Vector velocity = player.getVelocity();
-    double lift = 0.07 + (charge * 0.30);
-    velocity.setY(Math.max(velocity.getY(), lift));
-    player.setVelocity(velocity);
-  }
-
   private double getShiftCharge(Player player) {
     double charged = this.charges.getOrDefault(player.getUniqueId(), 0.0);
     return Math.max(charged, player.getExp());
   }
 
-  private void playPuckHitEffect(Slime slime, boolean dangleMode) {
-    Location hitLoc = slime.getLocation().clone().add(0, 0.25, 0);
-    Particle particle = dangleMode ? Particle.SWEEP_ATTACK : Particle.CRIT;
-    slime.getWorld().spawnParticle(particle, hitLoc, dangleMode ? 2 : 4, 0.14, 0.06, 0.14, 0.01);
-    slime.getWorld().playSound(hitLoc, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.65f, dangleMode ? 1.4f : 1.1f);
-  }
-
-  //TODO Fix this
   /**
    * Method to deal with the handling of when a goalie gloves the puck.
    * @param goalie is the goalie that gloved the puck
