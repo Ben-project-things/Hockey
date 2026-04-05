@@ -431,21 +431,10 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
-        double baseForce;
-        switch (hitLevel) {
-          case 1:
-            baseForce = 1.10;
-            break;
-          case 2:
-            baseForce = 1.65;
-            break;
-          default:
-            baseForce = 2.35;
-            break;
-        }
-        Vector boosted = shotDirection.multiply(baseForce).add(horizontalMomentum.multiply(0.18));
-        if (boosted.clone().setY(0).lengthSquared() < 0.08) {
-          boosted = forward.clone().multiply(baseForce);
+        double addedForce = (hitLevel == 3) ? 2.0 : 0.0;
+        Vector boosted = horizontalMomentum.clone();
+        if (addedForce > 0.0) {
+          boosted.add(shotDirection.multiply(addedForce));
         }
 
         double basePop = 0.07 + (hitLevel * 0.03);
@@ -476,10 +465,10 @@ public class PlayerHockeyListener implements Listener {
       }
 
       if (hitLevel == 2) {
-        Vector pull = updatedVelocity.clone().setY(0).multiply(-0.35);
-        Vector backward = forward.clone().multiply(-0.88);
+        Vector pull = updatedVelocity.clone().setY(0).multiply(-0.18);
+        Vector backward = forward.clone().multiply(-0.42);
         pull.add(backward);
-        if (pull.lengthSquared() < 0.24) {
+        if (pull.lengthSquared() < 0.06) {
           pull = backward;
         }
         pull.setY(shiftLift ? getShiftLift(charge) : 0.0);
@@ -487,16 +476,8 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
 
-      Vector hitVelocity = updatedVelocity.clone();
       Vector horizontalMomentum = updatedVelocity.clone().setY(0);
-      if (horizontalMomentum.lengthSquared() < 0.01) {
-        horizontalMomentum = forward.clone().multiply(2.30);
-      }
-      Vector baseHit = forward.clone().multiply(Math.max(1.05, horizontalMomentum.length() * 0.30));
-      hitVelocity.add(baseHit);
-      if (hitVelocity.clone().setY(0).lengthSquared() < 0.10) {
-        hitVelocity = forward.clone().multiply(2.65);
-      }
+      Vector hitVelocity = horizontalMomentum.add(forward.clone().multiply(2.5));
       double basePop = 0.14;
       if (shiftLift) {
         hitVelocity.setY(Math.max(Math.max(hitVelocity.getY(), basePop), getShiftLift(charge)));
@@ -1123,29 +1104,28 @@ public class PlayerHockeyListener implements Listener {
       }
       contactNormal.normalize();
 
-      Vector incoming = velocity.clone().setY(0);
-      if (incoming.lengthSquared() < 0.0001) {
-        incoming = contactNormal.clone().multiply(-1);
+      Vector incomingHorizontal = velocity.clone().setY(0);
+      if (incomingHorizontal.lengthSquared() < 0.0001) {
+        incomingHorizontal = contactNormal.clone().multiply(-horizontalSpeed);
+      }
+
+      double towardGoalie = incomingHorizontal.dot(contactNormal);
+      if (towardGoalie >= 0) {
+        continue;
+      }
+
+      Vector reflected = incomingHorizontal.clone().subtract(contactNormal.clone().multiply(2 * towardGoalie));
+      if (reflected.lengthSquared() < 0.0001) {
+        reflected = contactNormal.clone();
       } else {
-        incoming.normalize();
+        reflected.normalize();
       }
 
-      Vector bouncedDirection = contactNormal.clone();
-      double towardGoalieDot = incoming.dot(contactNormal);
-      if (towardGoalieDot < -0.05) {
-        bouncedDirection = incoming.clone().subtract(contactNormal.clone().multiply(2 * towardGoalieDot));
-        if (bouncedDirection.lengthSquared() < 0.0001) {
-          bouncedDirection = contactNormal.clone();
-        } else {
-          bouncedDirection.normalize();
-        }
-      }
-
-      Vector bounced = bouncedDirection.clone().multiply(Math.max(0.26, horizontalSpeed * 0.98));
+      Vector bounced = reflected.clone().multiply(Math.max(0.26, horizontalSpeed * 0.98));
       bounced.setY(Math.max(0.04, velocity.getY()));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = bouncedDirection.clone().multiply(0.66).setY(0);
+      Vector pushDirection = reflected.clone().multiply(0.66).setY(0);
       Location pushOut = puckLoc.clone().add(pushDirection);
       if (isPassableForPuck(pushOut)) {
         slime.teleport(pushOut);
