@@ -972,6 +972,7 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(newVelocity.getZ() * 0.965);
     }
     slime.setVelocity(newVelocity);
+    slime.setNoDamageTicks(0);
   }
 
   private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
