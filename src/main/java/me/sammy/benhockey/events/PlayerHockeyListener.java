@@ -413,20 +413,33 @@ public class PlayerHockeyListener implements Listener {
       }
 
       if (!dangleMode) {
-        if (hitLevel == 3) {
-          Vector boosted = slime.getVelocity().clone();
-          Vector horizontal = boosted.clone().setY(0);
-          if (horizontal.lengthSquared() > 0.0001) {
-            horizontal.normalize().multiply(0.52);
-            boosted.add(horizontal);
-            if (shiftLift) {
-              boosted.setY(Math.max(boosted.getY(), getShiftLift(charge)));
-            } else {
-              boosted.setY(Math.min(boosted.getY(), 0.02));
-            }
-            slime.setVelocity(boosted);
+        Vector existingVelocity = slime.getVelocity().clone();
+        Vector horizontalMomentum = existingVelocity.clone().setY(0);
+        Vector shotDirection = forward.clone();
+        if (horizontalMomentum.lengthSquared() > 0.0001) {
+          Vector momentumDirection = horizontalMomentum.clone().normalize();
+          if (momentumDirection.dot(forward) >= 0) {
+            shotDirection = momentumDirection;
           }
         }
+
+        double baseForce = switch (hitLevel) {
+          case 1 -> 1.10;
+          case 2 -> 1.65;
+          default -> 2.35;
+        };
+        Vector boosted = shotDirection.multiply(baseForce).add(horizontalMomentum.multiply(0.18));
+        if (boosted.clone().setY(0).lengthSquared() < 0.08) {
+          boosted = forward.clone().multiply(baseForce);
+        }
+
+        double basePop = 0.07 + (hitLevel * 0.03);
+        if (shiftLift) {
+          boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+        } else {
+          boosted.setY(Math.max(existingVelocity.getY(), basePop));
+        }
+        slime.setVelocity(boosted);
         return;
       }
 
@@ -470,14 +483,19 @@ public class PlayerHockeyListener implements Listener {
       Vector hitVelocity = updatedVelocity.clone();
       Vector horizontalMomentum = updatedVelocity.clone().setY(0);
       if (horizontalMomentum.lengthSquared() < 0.01) {
-        horizontalMomentum = forward.clone().multiply(2.00);
+        horizontalMomentum = forward.clone().multiply(2.30);
       }
-      Vector baseHit = forward.clone().multiply(Math.max(0.45, horizontalMomentum.length() * 0.18));
+      Vector baseHit = forward.clone().multiply(Math.max(1.05, horizontalMomentum.length() * 0.30));
       hitVelocity.add(baseHit);
       if (hitVelocity.clone().setY(0).lengthSquared() < 0.10) {
-        hitVelocity = forward.clone().multiply(2.00);
+        hitVelocity = forward.clone().multiply(2.65);
       }
-      hitVelocity.setY(shiftLift ? Math.max(hitVelocity.getY(), getShiftLift(charge)) : 0.0);
+      double basePop = 0.14;
+      if (shiftLift) {
+        hitVelocity.setY(Math.max(Math.max(hitVelocity.getY(), basePop), getShiftLift(charge)));
+      } else {
+        hitVelocity.setY(Math.max(hitVelocity.getY(), basePop));
+      }
       slime.setVelocity(hitVelocity);
     }, 1L);
   }
@@ -489,7 +507,7 @@ public class PlayerHockeyListener implements Listener {
 
   private double getShiftLift(double charge) {
     double clampedCharge = Math.max(0.0, Math.min(1.0, charge));
-    return 0.12 + (clampedCharge * 0.68);
+    return 0.20 + (clampedCharge * 0.64);
   }
 
   /**
@@ -1091,32 +1109,44 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector goalieToPuck = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
-      if (goalieToPuck.lengthSquared() < 0.0001) {
+      Vector contactNormal = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
+      if (contactNormal.lengthSquared() < 0.0001) {
         float yawRadians = (float) Math.toRadians(player.getLocation().getYaw());
-        goalieToPuck = new Vector(-Math.sin(yawRadians), 0, Math.cos(yawRadians));
+        contactNormal = new Vector(-Math.sin(yawRadians), 0, Math.cos(yawRadians));
       }
-      goalieToPuck.normalize();
+      contactNormal.normalize();
 
       Vector incoming = velocity.clone().setY(0);
       if (incoming.lengthSquared() < 0.0001) {
-        incoming = goalieToPuck.clone().multiply(-1);
+        incoming = contactNormal.clone().multiply(-1);
       } else {
         incoming.normalize();
       }
 
-      if (incoming.dot(goalieToPuck) > 0) {
-        goalieToPuck.multiply(-1);
+      Vector bouncedDirection = contactNormal.clone();
+      double towardGoalieDot = incoming.dot(contactNormal);
+      if (towardGoalieDot < -0.05) {
+        bouncedDirection = incoming.clone().subtract(contactNormal.clone().multiply(2 * towardGoalieDot));
+        if (bouncedDirection.lengthSquared() < 0.0001) {
+          bouncedDirection = contactNormal.clone();
+        } else {
+          bouncedDirection.normalize();
+        }
       }
 
-      Vector bounced = goalieToPuck.clone().multiply(Math.max(0.18, horizontalSpeed * 0.92));
-      bounced.setY(Math.max(0.0, velocity.getY()));
+      Vector bounced = bouncedDirection.clone().multiply(Math.max(0.26, horizontalSpeed * 0.98));
+      bounced.setY(Math.max(0.04, velocity.getY()));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = goalieToPuck.clone().multiply(0.54);
-      Location pushOut = puckLoc.clone().add(pushDirection.setY(0));
+      Vector pushDirection = bouncedDirection.clone().multiply(0.66).setY(0);
+      Location pushOut = puckLoc.clone().add(pushDirection);
       if (isPassableForPuck(pushOut)) {
         slime.teleport(pushOut);
+      } else {
+        Location elevatedPushOut = pushOut.clone().add(0, 0.15, 0);
+        if (isPassableForPuck(elevatedPushOut)) {
+          slime.teleport(elevatedPushOut);
+        }
       }
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
 
