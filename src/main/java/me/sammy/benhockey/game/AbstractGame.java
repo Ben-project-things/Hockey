@@ -46,6 +46,8 @@ public abstract class AbstractGame implements Game {
   protected BukkitRunnable pendingDelayedTask;
   protected BukkitRunnable intermissionTimer;
   protected int intermissionTimeLeft;
+  protected boolean firstFaceoffTouchPending;
+  private Location lastPuckLocation;
 
   /**
    * Represents the constructor for an abstract game in which all games share these fields.
@@ -62,6 +64,8 @@ public abstract class AbstractGame implements Game {
     this.timeLeft = 300000;
     this.gamePaused = false;
     this.intermissionTimeLeft = 0;
+    this.firstFaceoffTouchPending = false;
+    this.lastPuckLocation = null;
 
   }
 
@@ -82,6 +86,11 @@ public abstract class AbstractGame implements Game {
       public void run() {
         if (secondsLeft <= 0) {
           summonPuck(rink.getCenterIce());
+          firstFaceoffTouchPending = true;
+          if (puck != null) {
+            lastPuckLocation = puck.getLocation().clone();
+          }
+          lastHits.clear();
           startGoalChecks();
           startGameTimer(timeLeft);
           cancel();
@@ -155,12 +164,20 @@ public abstract class AbstractGame implements Game {
         }
 
         Location loc = puck.getLocation();
+        Location previousLoc = lastPuckLocation;
+        lastPuckLocation = loc.clone();
 
         Location blockLoc = loc.getBlock().getLocation();
         if (rink.getHomeGoalZone().contains(blockLoc)) {
           scoreGoal("away");
         } else if (rink.getAwayGoalZone().contains(blockLoc)) {
           scoreGoal("home");
+        } else if (previousLoc != null) {
+          if (didCrossGoalLine(previousLoc, loc, "home")) {
+            scoreGoal("away");
+          } else if (didCrossGoalLine(previousLoc, loc, "away")) {
+            scoreGoal("home");
+          }
         }
       }
     };
@@ -211,6 +228,7 @@ public abstract class AbstractGame implements Game {
 
     this.puck.remove();
     this.puck = null;
+    this.lastPuckLocation = null;
 
     Location goalLoc = scoringTeam.equalsIgnoreCase("home") ?
             this.rink.getAwayGoalZone().get(2) : this.rink.getHomeGoalZone().get(2);
@@ -385,6 +403,7 @@ public abstract class AbstractGame implements Game {
     if (puck != null && !puck.isDead()) {
       puck.remove();
     }
+    this.lastPuckLocation = null;
 
     for (Player p : rink.getAllPlayers()) {
       p.sendTitle("", "§6Game Over", 10, 30, 10);
@@ -441,6 +460,11 @@ public abstract class AbstractGame implements Game {
     if (this.pendingDelayedTask != null) {
       this.pendingDelayedTask.cancel();
       this.pendingDelayedTask = null;
+      if (this.intermissionTimer != null) {
+        this.intermissionTimer.cancel();
+        this.intermissionTimer = null;
+      }
+      this.intermissionTimeLeft = 0;
       this.rink.getScoreboard().update();
       this.startFaceoff();
       this.gamePaused = false;
@@ -459,6 +483,9 @@ public abstract class AbstractGame implements Game {
 
   @Override
   public void addLastHit(Player player) {
+    if (this.firstFaceoffTouchPending) {
+      this.firstFaceoffTouchPending = false;
+    }
     getOrCreateStats(player).addTouch();
     lastHits.remove(player);
     lastHits.addFirst(player);
@@ -473,12 +500,22 @@ public abstract class AbstractGame implements Game {
   }
 
   @Override
+  public void addGoalieSave(Player goalie) {
+    getOrCreateStats(goalie).addSave();
+  }
+
+  @Override
   public Player getLastTouchPlayer() {
     if (this.lastHits.isEmpty()) {
       return null;
     }
 
     return this.lastHits.getFirst();
+  }
+
+  @Override
+  public boolean isFaceoffFirstTouch() {
+    return this.firstFaceoffTouchPending;
   }
 
 
@@ -739,16 +776,46 @@ public abstract class AbstractGame implements Game {
   }
 
   private void sendIntermissionTimer() {
-    String text = "§6Intermission: §f" + formatTime(this.intermissionTimeLeft);
-    for (Player player : this.rink.getAllPlayers()) {
-      player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(text));
-    }
+    // Intentionally left blank: intermission timing is shown on the scoreboard only.
   }
 
   private void clearIntermissionTimers() {
-    for (Player player : this.rink.getAllPlayers()) {
-      player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
+    // Intentionally left blank: intermission timing is shown on the scoreboard only.
+  }
+
+  private boolean didCrossGoalLine(Location previous, Location current, String defendedSide) {
+    Location goal = "home".equalsIgnoreCase(defendedSide)
+            ? this.rink.getHomeGoalCenter()
+            : this.rink.getAwayGoalCenter();
+    Location center = this.rink.getCenterIce();
+
+    double goalDx = goal.getX() - center.getX();
+    double goalDz = goal.getZ() - center.getZ();
+    boolean useXAxis = Math.abs(goalDx) >= Math.abs(goalDz);
+
+    double planeCoord = useXAxis ? goal.getX() : goal.getZ();
+    double prevAxis = useXAxis ? previous.getX() : previous.getZ();
+    double currAxis = useXAxis ? current.getX() : current.getZ();
+    double denom = currAxis - prevAxis;
+    if (Math.abs(denom) < 0.0001) {
+      return false;
     }
+
+    double t = (planeCoord - prevAxis) / denom;
+    if (t < 0.0 || t > 1.0) {
+      return false;
+    }
+
+    double crossX = previous.getX() + (current.getX() - previous.getX()) * t;
+    double crossY = previous.getY() + (current.getY() - previous.getY()) * t;
+    double crossZ = previous.getZ() + (current.getZ() - previous.getZ()) * t;
+
+    double lateral = useXAxis ? Math.abs(crossZ - goal.getZ()) : Math.abs(crossX - goal.getX());
+    if (lateral > 2.8) {
+      return false;
+    }
+
+    return crossY >= goal.getY() - 0.9 && crossY <= goal.getY() + 2.4;
   }
 
   private void sendPenaltyTimers() {
