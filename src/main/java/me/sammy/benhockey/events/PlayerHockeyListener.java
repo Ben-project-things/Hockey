@@ -412,6 +412,14 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
 
+      Vector updatedVelocity = slime.getVelocity();
+      Vector forward = player.getLocation().getDirection().setY(0);
+      if (forward.lengthSquared() < 0.0001) {
+        forward = new Vector(0, 0, 1);
+      }
+      forward.normalize();
+      Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
+
       if (!dangleMode) {
         Vector existingVelocity = slime.getVelocity().clone();
         Vector horizontalMomentum = existingVelocity.clone().setY(0);
@@ -423,11 +431,18 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
-        double baseForce = switch (hitLevel) {
-          case 1 -> 1.10;
-          case 2 -> 1.65;
-          default -> 2.35;
-        };
+        double baseForce;
+        switch (hitLevel) {
+          case 1:
+            baseForce = 1.10;
+            break;
+          case 2:
+            baseForce = 1.65;
+            break;
+          default:
+            baseForce = 2.35;
+            break;
+        }
         Vector boosted = shotDirection.multiply(baseForce).add(horizontalMomentum.multiply(0.18));
         if (boosted.clone().setY(0).lengthSquared() < 0.08) {
           boosted = forward.clone().multiply(baseForce);
@@ -442,14 +457,6 @@ public class PlayerHockeyListener implements Listener {
         slime.setVelocity(boosted);
         return;
       }
-
-      Vector updatedVelocity = slime.getVelocity();
-      Vector forward = player.getLocation().getDirection().setY(0);
-      if (forward.lengthSquared() < 0.0001) {
-        forward = new Vector(0, 0, 1);
-      }
-      forward.normalize();
-      Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
 
       if (hitLevel == 1) {
         Vector toPuck = slime.getLocation().toVector().subtract(player.getLocation().toVector()).setY(0);
