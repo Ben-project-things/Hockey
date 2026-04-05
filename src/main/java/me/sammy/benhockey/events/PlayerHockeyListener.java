@@ -60,6 +60,8 @@ import me.sammy.benhockey.lobby.LobbyManager;
  */
 public class PlayerHockeyListener implements Listener {
 
+  private static final int GOALIE_SLIDE_COOLDOWN_TICKS = 20;
+  private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
   private final JavaPlugin plugin;
@@ -166,8 +168,12 @@ public class PlayerHockeyListener implements Listener {
 
     p.getInventory().setHeldItemSlot(0);
     this.slideCooldown.add(uuid);
-    this.goalieSlideCooldownTicks.put(uuid, 20);
-    Bukkit.getScheduler().runTaskLater(plugin, () -> slideCooldown.remove(uuid), 20L);
+    this.goalieSlideCooldownTicks.put(uuid, GOALIE_SLIDE_COOLDOWN_TICKS);
+    Bukkit.getScheduler().runTaskLater(
+            plugin,
+            () -> slideCooldown.remove(uuid),
+            GOALIE_SLIDE_COOLDOWN_TICKS
+    );
     p.playSound(p.getLocation(), Sound.BLOCK_SCAFFOLDING_PLACE, 50f, 1.2f);
   }
 
@@ -240,6 +246,7 @@ public class PlayerHockeyListener implements Listener {
       int currentLevel = player.getLevel();
       int newLevel = (currentLevel >= 3) ? 1 : currentLevel + 1;
       player.setLevel(newLevel);
+      updateHitLevelEffects(player, newLevel);
 
       player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.2f);
 
@@ -411,6 +418,9 @@ public class PlayerHockeyListener implements Listener {
       if (slime.isDead() || !slime.isValid()) {
         return;
       }
+      if (dangleMode && hitLevel <= 2) {
+        slime.setNoDamageTicks(0);
+      }
 
       Vector updatedVelocity = slime.getVelocity();
       Vector forward = player.getLocation().getDirection().setY(0);
@@ -431,7 +441,7 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
-        double addedForce = (hitLevel == 3) ? 1.25 : 0.0;
+        double addedForce = (hitLevel == 3) ? 1.2 : 0.0;
         Vector boosted = horizontalMomentum.clone();
         if (addedForce > 0.0) {
           boosted.add(shotDirection.multiply(addedForce));
@@ -486,7 +496,7 @@ public class PlayerHockeyListener implements Listener {
         }
       }
 
-      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.5));
+      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.45));
       double basePop = 0.07 + (hitLevel * 0.03);
       if (shiftLift) {
         boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
@@ -659,6 +669,7 @@ public class PlayerHockeyListener implements Listener {
       setDangleMode(player, false);
 
       player.setLevel(1);
+      updateHitLevelEffects(player, 1);
 
       ItemMeta meta = item.getItemMeta();
       meta.removeEnchant(Enchantment.KNOCKBACK);
@@ -715,7 +726,7 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      goalie.setExp(Math.min(1.0f, ticksLeft / 20.0f));
+      goalie.setExp(Math.min(1.0f, ticksLeft / (float) GOALIE_SLIDE_COOLDOWN_TICKS));
       this.goalieSlideCooldownTicks.put(uuid, ticksLeft - 1);
     }
 
@@ -1376,7 +1387,7 @@ public class PlayerHockeyListener implements Listener {
       push = new Vector(0, 0, 1);
     }
 
-    double horizontalStrength = hitLevel == 3 ? 2.45 : (0.95 + (hitLevel * 0.45));
+    double horizontalStrength = hitLevel == 3 ? 1.2 : (0.95 + (hitLevel * 0.45));
     Vector knockback = push.normalize().multiply(horizontalStrength);
 
     double currentY = damaged.getVelocity().getY();
@@ -1412,9 +1423,26 @@ public class PlayerHockeyListener implements Listener {
     meta.addAttributeModifier(Attribute.GENERIC_ATTACK_SPEED, attackSpeedModifier);
 
     p.setLevel(1);
+    updateHitLevelEffects(p, 1);
     meta.addEnchant(Enchantment.KNOCKBACK, 1, true);
     item.setItemMeta(meta);
     p.getInventory().setItemInMainHand(item);
+  }
+
+  private void updateHitLevelEffects(Player player, int hitLevel) {
+    if (hitLevel >= 3) {
+      player.addPotionEffect(new PotionEffect(
+              PotionEffectType.SLOW,
+              Integer.MAX_VALUE,
+              HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER,
+              false,
+              false,
+              true
+      ));
+      return;
+    }
+
+    player.removePotionEffect(PotionEffectType.SLOW);
   }
 
   private boolean isHockeyStick(ItemStack item) {
