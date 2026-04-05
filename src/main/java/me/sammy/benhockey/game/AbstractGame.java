@@ -5,12 +5,14 @@ import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -268,8 +270,11 @@ public abstract class AbstractGame implements Game {
 
 
     World world = goalLoc.getWorld();
-
-    world.createExplosion(goalLoc, 8.0f, false, false);
+    if (world != null) {
+      world.spawnParticle(Particle.EXPLOSION, goalLoc, 10, 1.2, 0.8, 1.2, 0.02);
+      world.playSound(goalLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
+      pushPlayersFromGoal(goalLoc);
+    }
 
     this.rink.getScoreboard().update();
     String title;
@@ -277,17 +282,13 @@ public abstract class AbstractGame implements Game {
 
     if (gc.isOwnGoal()) {
       title = "§6Own Goal";
-      subtitle = "§7Scored by: " + gc.getScorer().getName();
+      subtitle = "§7Scored by: " + (gc.getScorer() != null ? gc.getScorer().getName() : "Unknown");
     } else {
-      title = "§" + teamColor + gc.getScorer().getName() + "§" + teamColor + " Scored";
-      if (gc.getAssisters().isEmpty()) {
-        subtitle = "";
-      } else {
-        String assists = gc.getAssisters().stream()
-                .map(Player::getName)
-                .collect(Collectors.joining(", "));
-        subtitle = "§7Assisted by: " + assists;
-      }
+      String scoringTeamName = scoringTeam.equalsIgnoreCase("home")
+              ? this.rink.getHomeTeamName()
+              : this.rink.getAwayTeamName();
+      title = "§" + teamColor + scoringTeamName + " GOAL";
+      subtitle = buildGoalSubtitle(teamColor, gc);
     }
 
     for (Player p : this.rink.getAllPlayers()) {
@@ -405,10 +406,26 @@ public abstract class AbstractGame implements Game {
     }
     this.lastPuckLocation = null;
 
+    String winnerTitle;
+    if (homeScore > awayScore) {
+      winnerTitle = "§c" + rink.getHomeTeamName() + " Wins";
+    } else if (awayScore > homeScore) {
+      winnerTitle = "§9" + rink.getAwayTeamName() + " Wins";
+    } else {
+      winnerTitle = "§eTie Game";
+    }
+
     for (Player p : rink.getAllPlayers()) {
-      p.sendTitle("", "§6Game Over", 10, 30, 10);
+      p.sendTitle(
+              winnerTitle,
+              "§6Final Score: §c" + homeScore + " §7- §9" + awayScore,
+              10,
+              40,
+              10
+      );
       p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
       p.sendMessage("§6[§bBH§6] §6Final Score: §c" + homeScore + " §7- §9" + awayScore);
+      displayStats(p);
     }
   }
 
@@ -819,18 +836,85 @@ public abstract class AbstractGame implements Game {
   }
 
   private void sendPenaltyTimers() {
+    int homePenalties = 0;
+    int awayPenalties = 0;
+    int homeSoonest = Integer.MAX_VALUE;
+    int awaySoonest = Integer.MAX_VALUE;
+
     for (Map.Entry<UUID, Integer> entry : this.activePenalties.entrySet()) {
-      Player penalizedPlayer = Bukkit.getPlayer(entry.getKey());
-      if (penalizedPlayer == null || !this.rink.containsPlayer(penalizedPlayer)) {
+      Player penalized = Bukkit.getPlayer(entry.getKey());
+      if (penalized == null) {
         continue;
       }
-
-      String penaltyTime = formatTime(entry.getValue());
-      penalizedPlayer.spigot().sendMessage(
-              ChatMessageType.ACTION_BAR,
-              new TextComponent("§cPenalty Time Remaining: §f" + penaltyTime)
-      );
+      String team = this.rink.getTeam(penalized);
+      if ("home".equalsIgnoreCase(team)) {
+        homePenalties++;
+        homeSoonest = Math.min(homeSoonest, entry.getValue());
+      } else if ("away".equalsIgnoreCase(team)) {
+        awayPenalties++;
+        awaySoonest = Math.min(awaySoonest, entry.getValue());
+      }
     }
+
+    String actionBarMessage = "";
+    if (homePenalties == awayPenalties && homePenalties > 0) {
+      int remaining = Math.min(homeSoonest, awaySoonest);
+      actionBarMessage = "§eEven Strength: §f" + formatTime(remaining);
+    } else if (homePenalties > awayPenalties) {
+      int remaining = homeSoonest == Integer.MAX_VALUE ? 0 : homeSoonest;
+      actionBarMessage = "§9Power Play: §f" + formatTime(remaining);
+    } else if (awayPenalties > homePenalties) {
+      int remaining = awaySoonest == Integer.MAX_VALUE ? 0 : awaySoonest;
+      actionBarMessage = "§cPower Play: §f" + formatTime(remaining);
+    }
+
+    for (Player arenaPlayer : this.rink.getAllPlayers()) {
+      arenaPlayer.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(actionBarMessage));
+    }
+  }
+
+  private void pushPlayersFromGoal(Location goalLoc) {
+    for (Player player : this.rink.getAllPlayers()) {
+      Vector push = player.getLocation().toVector().subtract(goalLoc.toVector());
+      double distance = Math.max(0.75, push.length());
+      if (push.lengthSquared() < 0.0001) {
+        push = this.rink.getCenterIce().toVector().subtract(goalLoc.toVector());
+      }
+      push.normalize();
+      double strength = Math.max(0.25, 1.0 - (distance / 22.0));
+      Vector velocity = push.multiply(strength * 1.35);
+      velocity.setY(0.22 + (strength * 0.18));
+      player.setFallDistance(0f);
+      player.setVelocity(velocity);
+    }
+  }
+
+  private String buildGoalSubtitle(String teamColor, GoalContribution gc) {
+    if (gc.getScorer() == null) {
+      return "";
+    }
+
+    String scorer = formatPlayerWithStat(gc.getScorer(), true);
+    if (gc.getAssisters().isEmpty()) {
+      return "§" + teamColor + "Scored by: §7" + scorer;
+    }
+
+    String assists = gc.getAssisters().stream()
+            .map(player -> formatPlayerWithStat(player, false))
+            .collect(Collectors.joining(", §7"));
+    return "§" + teamColor + "Scored by: §7" + scorer + " §" + teamColor + "Assisted By: §7" + assists;
+  }
+
+  private String formatPlayerWithStat(Player player, boolean goals) {
+    int statValue = this.playerStats.entrySet().stream()
+            .filter(entry -> entry.getKey().playerId().equals(player.getUniqueId()))
+            .map(Map.Entry::getValue)
+            .mapToInt(stats -> goals ? stats.getGoals() : stats.getAssists())
+            .sum();
+    if (statValue <= 1) {
+      return player.getName();
+    }
+    return player.getName() + " §8(" + statValue + ")";
   }
 
   /**
