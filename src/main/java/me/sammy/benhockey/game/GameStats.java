@@ -37,6 +37,14 @@ public class GameStats {
     assists++;
   }
 
+  public int getGoals() {
+    return this.goals;
+  }
+
+  public int getAssists() {
+    return this.assists;
+  }
+
   public void addTouch() {
     touches++;
   }
