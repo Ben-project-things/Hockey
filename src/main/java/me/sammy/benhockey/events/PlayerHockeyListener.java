@@ -431,7 +431,7 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
-        double addedForce = (hitLevel == 3) ? 2.0 : 0.0;
+        double addedForce = (hitLevel == 3) ? 1.25 : 0.0;
         Vector boosted = horizontalMomentum.clone();
         if (addedForce > 0.0) {
           boosted.add(shotDirection.multiply(addedForce));
@@ -476,15 +476,24 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
 
-      Vector horizontalMomentum = updatedVelocity.clone().setY(0);
-      Vector hitVelocity = horizontalMomentum.add(forward.clone().multiply(2.5));
-      double basePop = 0.14;
-      if (shiftLift) {
-        hitVelocity.setY(Math.max(Math.max(hitVelocity.getY(), basePop), getShiftLift(charge)));
-      } else {
-        hitVelocity.setY(Math.max(hitVelocity.getY(), basePop));
+      Vector existingVelocity = updatedVelocity.clone();
+      Vector horizontalMomentum = existingVelocity.clone().setY(0);
+      Vector shotDirection = forward.clone();
+      if (horizontalMomentum.lengthSquared() > 0.0001) {
+        Vector momentumDirection = horizontalMomentum.clone().normalize();
+        if (momentumDirection.dot(forward) >= 0) {
+          shotDirection = momentumDirection;
+        }
       }
-      slime.setVelocity(hitVelocity);
+
+      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.5));
+      double basePop = 0.07 + (hitLevel * 0.03);
+      if (shiftLift) {
+        boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+      } else {
+        boosted.setY(Math.max(existingVelocity.getY(), basePop));
+      }
+      slime.setVelocity(boosted);
     }, 1L);
   }
 
