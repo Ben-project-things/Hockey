@@ -49,6 +49,10 @@ public class GameStats {
     this.shotsOnTarget++;
   }
 
+  public void addSave() {
+    this.saves++;
+  }
+
   public String getTeam() {
     return team;
 

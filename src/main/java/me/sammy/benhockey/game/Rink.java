@@ -625,6 +625,24 @@ public class Rink {
   }
 
   /**
+   * Adds a save stat to the goalie.
+   * @param goalie is the goalie to credit
+   */
+  public void addGoalieSave(Player goalie) {
+    if (this.game != null && this.state == GameState.GAME) {
+      this.game.addGoalieSave(goalie);
+    }
+  }
+
+  /**
+   * Returns true when the next touch is still the first touch off the current faceoff.
+   * @return whether first touch of faceoff is still pending
+   */
+  public boolean isFaceoffFirstTouch() {
+    return this.game != null && this.state == GameState.GAME && this.game.isFaceoffFirstTouch();
+  }
+
+  /**
    * Updates the time of the current game.
    * @param time is the time to change it to.
    * @param p is the player that sent the command

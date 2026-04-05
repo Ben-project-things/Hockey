@@ -33,13 +33,14 @@ public final class BenHockey extends JavaPlugin {
         Bukkit.getScheduler().runTaskTimer(this, hockeyStickListener::update, 1L, 1L);
 
 
-        registerCommands(new String[]{"rink", "join", "goalie", "leave", "goalie", "stats", "puck",
+        registerCommands(new String[]{"rink", "join", "team", "goalie", "leave", "goalie", "stats", "puck",
                         "startgame", "pregame", "endgame", "togglehitting", "whistle", "penalty",
                         "lockteams", "setteamname", "fo", "settime", "bench", "createrink", "setgoal",
                         "cancelrink", "deleterink", "help"},
                 new GameCommands(this.lobbyManager));
 
         getCommand("join").setTabCompleter(new MyTabCompleter(lobbyManager));
+        getCommand("team").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("rink").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("setgoal").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("penalty").setTabCompleter(new MyTabCompleter(lobbyManager));

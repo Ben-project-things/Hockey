@@ -45,31 +45,54 @@ public class GameCommands implements CommandExecutor {
             return true;
 
         case "join":
+        case "team":
           if (lobbyManager.isPlayerInLobby(player)) {
             player.sendMessage("§6[§bBH§6] §cYou must be in a rink to use this command.");
             return true;
           }
 
           Rink joinRink = lobbyManager.getPlayerRink(player);
+          String teamArg = null;
+          String targetArg = null;
 
-          if (args.length == 1) {
-            if (args[0].equalsIgnoreCase("ref") && !player.isOp()) {
+          if (label.equalsIgnoreCase("team")) {
+            if (args.length < 2 || !args[0].equalsIgnoreCase("join")) {
+              player.sendMessage("§6[§bBH§6] §aUsage: §7/team join <home/away/fan/ref>");
+              return true;
+            }
+            teamArg = args[1];
+            if (args.length >= 3) {
+              targetArg = args[2];
+            }
+          } else if (args.length >= 1) {
+            teamArg = args[0];
+            if (args.length >= 2) {
+              targetArg = args[1];
+            }
+          }
+
+          if (teamArg != null && targetArg == null) {
+            if (teamArg.equalsIgnoreCase("ref") && !player.isOp()) {
               player.sendMessage("§6[§bFH§6] §7You don't have perms to join as a ref.");
               return true;
             }
-            joinRink.handleTeamJoin(args[0], player);
+            joinRink.handleTeamJoin(teamArg, player);
             return true;
           }
-          else if (args.length == 2 && player.isOp()) {
-            Player targetPlayer = Bukkit.getPlayer(args[1]);
+          else if (teamArg != null && targetArg != null && player.isOp()) {
+            Player targetPlayer = Bukkit.getPlayer(targetArg);
             if (targetPlayer == null) {
-              player.sendMessage("§6[§bBH§6] §cPlayer " + args[1] + " not found or not online.");
+              player.sendMessage("§6[§bBH§6] §cPlayer " + targetArg + " not found or not online.");
               return true;
             }
-            joinRink.handleTeamJoin(args[0], targetPlayer);
+            joinRink.handleTeamJoin(teamArg, targetPlayer);
             return true;
           } else {
-            player.sendMessage("§6[§bBH§6] §aUsage: §7/join <home/away/fan/ref>");
+            if (label.equalsIgnoreCase("team")) {
+              player.sendMessage("§6[§bBH§6] §aUsage: §7/team join <home/away/fan/ref>");
+            } else {
+              player.sendMessage("§6[§bBH§6] §aUsage: §7/team join <home/away/fan/ref>");
+            }
             return true;
           }
 

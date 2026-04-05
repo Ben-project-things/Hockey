@@ -42,6 +42,26 @@ public class MyTabCompleter implements TabCompleter {
       }
     }
 
+    if (command.getName().equalsIgnoreCase("team")) {
+      if (args.length == 1) {
+        return Arrays.asList("join").stream()
+                .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
+                .collect(Collectors.toList());
+      }
+      if (args.length == 2 && args[0].equalsIgnoreCase("join")) {
+        List<String> options = Arrays.asList("home", "away", "fan", "ref");
+        return options.stream()
+                .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
+                .collect(Collectors.toList());
+      }
+      if (args.length == 3 && args[0].equalsIgnoreCase("join") && sender.isOp()) {
+        return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .filter(name -> name.toLowerCase().startsWith(args[2].toLowerCase()))
+                .collect(Collectors.toList());
+      }
+    }
+
     if (command.getName().equalsIgnoreCase("rink")) {
       if (args.length == 1) {
         return lobbyManager.getRinks().stream()
