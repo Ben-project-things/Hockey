@@ -808,7 +808,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       player.addPotionEffect(new PotionEffect(PotionEffectType.POISON, Integer.MAX_VALUE, 0, false, false, false));
-      player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_HIT, 1f, 1.2f);
+      player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.2f);
       return;
     }
 
@@ -816,7 +816,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
     player.removePotionEffect(PotionEffectType.POISON);
-    player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_BREAK, 1f, 1.0f);
+    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.0f);
   }
 
   /**
