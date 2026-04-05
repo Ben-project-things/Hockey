@@ -60,7 +60,7 @@ import me.sammy.benhockey.lobby.LobbyManager;
  */
 public class PlayerHockeyListener implements Listener {
 
-  private static final int GOALIE_SLIDE_COOLDOWN_TICKS = 20;
+  private static final int GOALIE_SLIDE_COOLDOWN_TICKS = 10;
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
