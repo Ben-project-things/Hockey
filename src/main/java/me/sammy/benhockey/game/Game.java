@@ -80,10 +80,22 @@ public interface Game {
   void addShotOnTarget(Player player);
 
   /**
+   * Adds a save stat for the given goalie.
+   * @param goalie is the goalie to credit
+   */
+  void addGoalieSave(Player goalie);
+
+  /**
    * Gets the player that most recently touched the puck for this game.
    * @return last touching player, or null if no touches yet
    */
   Player getLastTouchPlayer();
+
+  /**
+   * Returns whether the next puck touch is still the first one after a faceoff drop.
+   * @return true if first faceoff touch is still pending
+   */
+  boolean isFaceoffFirstTouch();
 
   /**
    * Skip the face off timer delay between periods and goals.

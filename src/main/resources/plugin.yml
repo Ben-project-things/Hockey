@@ -9,6 +9,9 @@ commands:
   join:
     description: Join a team
     usage: /join <team> [playerName]
+  team:
+    description: Team management command
+    usage: /team join <home/away/fan/ref> [playerName]
   leave:
     description: Leave a rink
   bench:
