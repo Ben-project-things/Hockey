@@ -52,7 +52,8 @@ public class GameScoreboard {
       );
 
       if (game.getIntermissionTimeLeft() > 0) {
-        title += "    §6Intermission: §f" + formatTime(game.getIntermissionTimeLeft());
+        String delayLabel = game.getIntermissionLabel();
+        title += "    §6" + delayLabel + ": §f" + formatTime(game.getIntermissionTimeLeft());
       }
 
       String penaltySummary = game.getPenaltySummary();

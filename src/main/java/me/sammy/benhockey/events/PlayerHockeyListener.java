@@ -66,6 +66,7 @@ public class PlayerHockeyListener implements Listener {
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long BOARD_BOUNCE_COOLDOWN_MS = 420L;
+  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 16;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
   private final JavaPlugin plugin;
@@ -422,7 +423,7 @@ public class PlayerHockeyListener implements Listener {
     boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
     if (firstFaceoffTouch && hitLevel >= 3) {
-      hitLevel = 2;
+      hitLevel = 3;
     }
     e.setCancelled(true);
     this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
@@ -447,6 +448,15 @@ public class PlayerHockeyListener implements Listener {
     }
     forward.normalize();
     Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
+
+    if (firstFaceoffTouch && hitLevel >= 2) {
+      double faceoffPullDistance = hitLevel >= 3 ? 3.0 : 1.0;
+      Vector faceoffPull = forward.clone().multiply(-faceoffPullDistance);
+      faceoffPull.setY(0.0);
+      slime.setVelocity(faceoffPull);
+      registerShotOnTargetIfNeeded(player, slime);
+      return;
+    }
 
     if (!dangleMode) {
       Vector existingVelocity = slime.getVelocity().clone();
@@ -1019,7 +1029,7 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(newVelocity.getZ() * 0.965);
     }
     slime.setVelocity(newVelocity);
-    slime.setNoDamageTicks(0);
+    slime.setNoDamageTicks(Math.max(0, Math.min(BOARD_BOUNCE_NO_DAMAGE_TICKS, slime.getMaximumNoDamageTicks())));
   }
 
   private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
@@ -1234,10 +1244,11 @@ public class PlayerHockeyListener implements Listener {
     }
 
     String team = rink.getTeam(shooter);
-    Location target = team.equalsIgnoreCase("home") ? rink.getAwayGoalCenter() : rink.getHomeGoalCenter();
     if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
       return;
     }
+    Location target = team.equalsIgnoreCase("home") ? rink.getAwayGoalCenter() : rink.getHomeGoalCenter();
+    Location ownGoal = team.equalsIgnoreCase("home") ? rink.getHomeGoalCenter() : rink.getAwayGoalCenter();
 
     Vector shotVelocity = slime.getVelocity().clone().setY(0);
     if (shotVelocity.lengthSquared() < 0.02) {
@@ -1251,6 +1262,11 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Vector shotDirection = shotVelocity.clone().normalize();
+    Vector towardOwnGoal = ownGoal.toVector().subtract(puckLoc.toVector()).setY(0);
+    if (towardOwnGoal.lengthSquared() > 0.01
+            && shotDirection.dot(towardOwnGoal.normalize()) > 0.88) {
+      return;
+    }
     Vector goalDirection = towardGoal.clone().normalize();
     if (shotDirection.dot(goalDirection) < 0.93) {
       return;

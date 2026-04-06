@@ -48,6 +48,7 @@ public abstract class AbstractGame implements Game {
   protected BukkitRunnable pendingDelayedTask;
   protected BukkitRunnable intermissionTimer;
   protected int intermissionTimeLeft;
+  protected String intermissionLabel;
   protected boolean firstFaceoffTouchPending;
   private Location lastPuckLocation;
 
@@ -66,6 +67,7 @@ public abstract class AbstractGame implements Game {
     this.timeLeft = 300000;
     this.gamePaused = false;
     this.intermissionTimeLeft = 0;
+    this.intermissionLabel = "Faceoff";
     this.firstFaceoffTouchPending = false;
     this.lastPuckLocation = null;
 
@@ -169,10 +171,9 @@ public abstract class AbstractGame implements Game {
         Location previousLoc = lastPuckLocation;
         lastPuckLocation = loc.clone();
 
-        Location blockLoc = loc.getBlock().getLocation();
-        if (rink.getHomeGoalZone().contains(blockLoc)) {
+        if (isEntirePuckInsideGoalZone(loc, "home")) {
           scoreGoal("away");
-        } else if (rink.getAwayGoalZone().contains(blockLoc)) {
+        } else if (isEntirePuckInsideGoalZone(loc, "away")) {
           scoreGoal("home");
         } else if (previousLoc != null) {
           if (didCrossGoalLine(previousLoc, loc, "home")) {
@@ -209,11 +210,13 @@ public abstract class AbstractGame implements Game {
 
     if (period > 3) {
       if (homeScore == awayScore) {
+        this.intermissionLabel = "Faceoff";
         runAfterDelay(30, this::startFaceoff);
       } else {
         endGame();
       }
     } else {
+      this.intermissionLabel = "Intermission";
       runAfterDelay(30, this::startFaceoff);
     }
   }
@@ -271,7 +274,10 @@ public abstract class AbstractGame implements Game {
 
     World world = goalLoc.getWorld();
     if (world != null) {
-      world.spawnParticle(Particle.TOTEM, goalLoc, 10, 1.2, 0.8, 1.2, 0.02);
+      Particle.DustOptions goalDust = scoringTeam.equalsIgnoreCase("home")
+              ? new Particle.DustOptions(org.bukkit.Color.BLUE, 1.6f)
+              : new Particle.DustOptions(org.bukkit.Color.RED, 1.6f);
+      world.spawnParticle(Particle.DUST, goalLoc, 28, 1.2, 0.8, 1.2, 0.01, goalDust);
       world.playSound(goalLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
       pushPlayersFromGoal(goalLoc);
     }
@@ -282,7 +288,7 @@ public abstract class AbstractGame implements Game {
 
     if (gc.isOwnGoal()) {
       title = "§6Own Goal";
-      subtitle = "§7Scored by: " + (gc.getScorer() != null ? gc.getScorer().getName() : "Unknown");
+      subtitle = "§" + teamColor + "Scored by: §7" + (gc.getScorer() != null ? gc.getScorer().getName() : "Unknown");
     } else {
       String scoringTeamName = scoringTeam.equalsIgnoreCase("home")
               ? this.rink.getHomeTeamName()
@@ -302,6 +308,7 @@ public abstract class AbstractGame implements Game {
     if (period > 3) {
       runAfterDelay(5, this::endGame);
     } else {
+      this.intermissionLabel = "Faceoff";
       runAfterDelay(10, this::startFaceoff);
     }
   }
@@ -333,6 +340,9 @@ public abstract class AbstractGame implements Game {
       this.intermissionTimer.cancel();
     }
 
+    if (this.intermissionLabel == null || this.intermissionLabel.isBlank()) {
+      this.intermissionLabel = "Faceoff";
+    }
     this.intermissionTimeLeft = seconds * 1000;
     this.rink.getScoreboard().update();
 
@@ -452,6 +462,11 @@ public abstract class AbstractGame implements Game {
   @Override
   public int getIntermissionTimeLeft() {
     return this.intermissionTimeLeft;
+  }
+
+  @Override
+  public String getIntermissionLabel() {
+    return this.intermissionLabel;
   }
 
   @Override
@@ -811,6 +826,12 @@ public abstract class AbstractGame implements Game {
     boolean useXAxis = Math.abs(goalDx) >= Math.abs(goalDz);
 
     double planeCoord = useXAxis ? goal.getX() : goal.getZ();
+    double fullCrossOffset = 0.35;
+    double towardGoalSign = useXAxis ? Math.signum(goalDx) : Math.signum(goalDz);
+    if (towardGoalSign == 0.0) {
+      towardGoalSign = 1.0;
+    }
+    planeCoord += towardGoalSign * fullCrossOffset;
     double prevAxis = useXAxis ? previous.getX() : previous.getZ();
     double currAxis = useXAxis ? current.getX() : current.getZ();
     double denom = currAxis - prevAxis;
@@ -833,6 +854,38 @@ public abstract class AbstractGame implements Game {
     }
 
     return crossY >= goal.getY() - 0.9 && crossY <= goal.getY() + 2.4;
+  }
+
+  private boolean isEntirePuckInsideGoalZone(Location puckLoc, String defendedSide) {
+    Location goal = "home".equalsIgnoreCase(defendedSide)
+            ? this.rink.getHomeGoalCenter()
+            : this.rink.getAwayGoalCenter();
+    Location center = this.rink.getCenterIce();
+
+    double goalDx = goal.getX() - center.getX();
+    double goalDz = goal.getZ() - center.getZ();
+    boolean useXAxis = Math.abs(goalDx) >= Math.abs(goalDz);
+
+    double axisCoord = useXAxis ? puckLoc.getX() : puckLoc.getZ();
+    double lateralCoord = useXAxis ? puckLoc.getZ() : puckLoc.getX();
+    double goalAxis = useXAxis ? goal.getX() : goal.getZ();
+    double goalLateral = useXAxis ? goal.getZ() : goal.getX();
+    double towardGoalSign = useXAxis ? Math.signum(goalDx) : Math.signum(goalDz);
+    if (towardGoalSign == 0.0) {
+      towardGoalSign = 1.0;
+    }
+
+    double forwardExtent = 0.35;
+    double lateralExtent = 0.35;
+    double fullInsideAxis = goalAxis + towardGoalSign * (1.0 + forwardExtent);
+    boolean axisInside = towardGoalSign > 0 ? axisCoord >= fullInsideAxis : axisCoord <= fullInsideAxis;
+    if (!axisInside) {
+      return false;
+    }
+
+    return Math.abs(lateralCoord - goalLateral) <= (2.5 - lateralExtent)
+            && puckLoc.getY() >= goal.getY() - 0.82
+            && puckLoc.getY() <= goal.getY() + 2.28;
   }
 
   private void sendPenaltyTimers() {
