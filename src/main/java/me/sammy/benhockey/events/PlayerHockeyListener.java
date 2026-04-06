@@ -466,7 +466,14 @@ public class PlayerHockeyListener implements Listener {
       if (!dangleMode) {
         Vector existingVelocity = slime.getVelocity().clone();
         Vector flatForward = forward.clone().setY(0).normalize();
-        double forwardImpulse = 0.58 + (0.26 * hitLevel);
+        double forwardImpulse;
+        if (hitLevel == 1) {
+          forwardImpulse = 0.72;
+        } else if (hitLevel == 2) {
+          forwardImpulse = 0.92;
+        } else {
+          forwardImpulse = 1.12;
+        }
         Vector boosted = existingVelocity.clone().add(flatForward.multiply(forwardImpulse));
 
         double basePop = 0.07 + (hitLevel * 0.03);
@@ -897,8 +904,9 @@ public class PlayerHockeyListener implements Listener {
 
     UUID slimeId = slime.getUniqueId();
     double landingY = slime.getLocation().getY();
-    Double peakY = this.puckAirbornePeakY.remove(slimeId);
-    if (peakY == null || peakY - landingY < 0.45) {
+    Double peakY = this.puckAirbornePeakY.get(slimeId);
+    if (peakY == null || peakY - landingY < 0.30) {
+      this.puckAirbornePeakY.remove(slimeId);
       return;
     }
 
@@ -907,7 +915,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    double bounceY = Math.min(0.16, Math.abs(previousVerticalVelocity) * 0.28);
+    double bounceY = Math.min(0.20, Math.abs(previousVerticalVelocity) * 0.34);
     if (bounceY < 0.05) {
       return;
     }
@@ -917,6 +925,7 @@ public class PlayerHockeyListener implements Listener {
     newVelocity.setX(newVelocity.getX() * 0.95);
     newVelocity.setZ(newVelocity.getZ() * 0.95);
     slime.setVelocity(newVelocity);
+    this.puckAirbornePeakY.remove(slimeId);
     slime.getWorld().playSound(slime.getLocation(), Sound.BLOCK_BASALT_STEP, 15f, 1.5f);
   }
 
