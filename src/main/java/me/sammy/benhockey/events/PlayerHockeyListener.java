@@ -407,6 +407,7 @@ public class PlayerHockeyListener implements Listener {
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
+    slime.setNoDamageTicks(0);
 
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
@@ -431,8 +432,6 @@ public class PlayerHockeyListener implements Listener {
       if (hitLevel <= 2) {
         slime.setNoDamageTicks(0);
       }
-    } else {
-      e.setDamage(0.0);
     }
 
     double charge = getShiftCharge(player);
@@ -456,7 +455,7 @@ public class PlayerHockeyListener implements Listener {
       Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
 
       if (firstFaceoffTouch && hitLevel >= 2) {
-        double faceoffPullDistance = hitLevel >= 3 ? 3.0 : 1.0;
+        double faceoffPullDistance = hitLevel >= 3 ? 2.1 : 1.0;
         Vector faceoffPull = forward.clone().multiply(-faceoffPullDistance);
         faceoffPull.setY(0.0);
         slime.setVelocity(faceoffPull);
@@ -467,28 +466,21 @@ public class PlayerHockeyListener implements Listener {
 
       if (!dangleMode) {
         Vector existingVelocity = slime.getVelocity().clone();
-        Vector horizontalMomentum = existingVelocity.clone().setY(0);
-        Vector shotDirection = forward.clone();
-        if (horizontalMomentum.lengthSquared() > 0.0001) {
-          Vector momentumDirection = horizontalMomentum.clone().normalize();
-          if (momentumDirection.dot(forward) >= 0) {
-            shotDirection = momentumDirection;
-          }
+        Vector boosted = existingVelocity.clone();
+
+        if (hitLevel == 3) {
+          Vector flatForward = forward.clone().setY(0).normalize();
+          boosted.add(flatForward.multiply(1.1));
         }
 
-        double addedForce = (hitLevel == 3) ? 1.2 : 0.0;
-        Vector boosted = horizontalMomentum.clone();
-        if (addedForce > 0.0) {
-          boosted.add(shotDirection.multiply(addedForce));
-        }
-
-        double basePop = 0.07 + (hitLevel * 0.03);
         if (shiftLift) {
+          double basePop = 0.07 + (hitLevel * 0.03);
           boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
-        } else {
-          boosted.setY(Math.max(existingVelocity.getY(), basePop));
         }
-        slime.setVelocity(boosted);
+
+        if (hitLevel == 3 || shiftLift) {
+          slime.setVelocity(boosted);
+        }
         return;
       }
 
@@ -782,6 +774,7 @@ public class PlayerHockeyListener implements Listener {
         UUID slimeId = slime.getUniqueId();
         livePucks.add(slimeId);
         world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
+        slime.setRotation(0f, 0f);
         if (!slime.isOnGround()) {
           double y = slime.getLocation().getY();
           this.puckAirbornePeakY.merge(slimeId, y, Math::max);
@@ -1476,6 +1469,7 @@ public class PlayerHockeyListener implements Listener {
     damaged.setVelocity(knockback);
     damaged.playEffect(EntityEffect.HURT);
     damager.playEffect(EntityEffect.HURT);
+    damaged.getWorld().spawnParticle(Particle.DAMAGE_INDICATOR, damaged.getLocation().add(0, 1.05, 0), 8, 0.25, 0.35, 0.25, 0.0);
     damaged.getWorld().playSound(damaged.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1f, 0.9f + (hitLevel * 0.07f));
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
     damager.sendMessage("§6[§bBH§6] §aYou hit §f" + damaged.getName() + " §7-> Power " + hitLevel);

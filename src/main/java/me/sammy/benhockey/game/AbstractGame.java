@@ -22,6 +22,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
@@ -235,8 +236,9 @@ public abstract class AbstractGame implements Game {
     this.puck = null;
     this.lastPuckLocation = null;
 
-    Location goalLoc = scoringTeam.equalsIgnoreCase("home") ?
-            this.rink.getAwayGoalZone().get(2) : this.rink.getHomeGoalZone().get(2);
+    Location goalLoc = scoringTeam.equalsIgnoreCase("home")
+            ? this.rink.getAwayGoalCenter()
+            : this.rink.getHomeGoalCenter();
     GoalContribution gc;
     String teamColor;
 
@@ -277,7 +279,7 @@ public abstract class AbstractGame implements Game {
       Particle.DustOptions goalDust = scoringTeam.equalsIgnoreCase("home")
               ? new Particle.DustOptions(org.bukkit.Color.BLUE, 1.6f)
               : new Particle.DustOptions(org.bukkit.Color.RED, 1.6f);
-      world.spawnParticle(Particle.REDSTONE, goalLoc, 28, 1.2, 0.8, 1.2, 0.01, goalDust);
+      spawnGoalParticles(world, goalLoc, goalDust);
       world.playSound(goalLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
       pushPlayersFromGoal(goalLoc);
     }
@@ -485,6 +487,45 @@ public abstract class AbstractGame implements Game {
               return name + " " + formatClock(seconds);
             })
             .collect(Collectors.joining(", "));
+  }
+
+  @Override
+  public String getStrengthSummary() {
+    int homePenalties = 0;
+    int awayPenalties = 0;
+    int homeSoonest = Integer.MAX_VALUE;
+    int awaySoonest = Integer.MAX_VALUE;
+
+    for (Map.Entry<UUID, Integer> entry : this.activePenalties.entrySet()) {
+      Player penalized = Bukkit.getPlayer(entry.getKey());
+      if (penalized == null) {
+        continue;
+      }
+
+      String team = this.rink.getTeam(penalized);
+      if ("home".equalsIgnoreCase(team)) {
+        homePenalties++;
+        homeSoonest = Math.min(homeSoonest, entry.getValue());
+      } else if ("away".equalsIgnoreCase(team)) {
+        awayPenalties++;
+        awaySoonest = Math.min(awaySoonest, entry.getValue());
+      }
+    }
+
+    if (homePenalties == awayPenalties) {
+      if (homePenalties == 0) {
+        return "§eEven Strength";
+      }
+      int remaining = Math.min(homeSoonest, awaySoonest);
+      return "§eEven Strength: §f" + formatTime(remaining);
+    }
+    if (homePenalties > awayPenalties) {
+      int remaining = homeSoonest == Integer.MAX_VALUE ? 0 : homeSoonest;
+      return "§9Power Play: §f" + formatTime(remaining);
+    }
+
+    int remaining = awaySoonest == Integer.MAX_VALUE ? 0 : awaySoonest;
+    return "§cPower Play: §f" + formatTime(remaining);
   }
 
   @Override
@@ -889,40 +930,59 @@ public abstract class AbstractGame implements Game {
   }
 
   private void sendPenaltyTimers() {
-    int homePenalties = 0;
-    int awayPenalties = 0;
-    int homeSoonest = Integer.MAX_VALUE;
-    int awaySoonest = Integer.MAX_VALUE;
+    Map<Player, Integer> penalizedPlayers = new HashMap<>();
 
     for (Map.Entry<UUID, Integer> entry : this.activePenalties.entrySet()) {
       Player penalized = Bukkit.getPlayer(entry.getKey());
       if (penalized == null) {
         continue;
       }
-      String team = this.rink.getTeam(penalized);
-      if ("home".equalsIgnoreCase(team)) {
-        homePenalties++;
-        homeSoonest = Math.min(homeSoonest, entry.getValue());
-      } else if ("away".equalsIgnoreCase(team)) {
-        awayPenalties++;
-        awaySoonest = Math.min(awaySoonest, entry.getValue());
-      }
+      penalizedPlayers.put(penalized, entry.getValue());
     }
 
-    String actionBarMessage = "";
-    if (homePenalties == awayPenalties && homePenalties > 0) {
-      int remaining = Math.min(homeSoonest, awaySoonest);
-      actionBarMessage = "§eEven Strength: §f" + formatTime(remaining);
-    } else if (homePenalties > awayPenalties) {
-      int remaining = homeSoonest == Integer.MAX_VALUE ? 0 : homeSoonest;
-      actionBarMessage = "§9Power Play: §f" + formatTime(remaining);
-    } else if (awayPenalties > homePenalties) {
-      int remaining = awaySoonest == Integer.MAX_VALUE ? 0 : awaySoonest;
-      actionBarMessage = "§cPower Play: §f" + formatTime(remaining);
+    for (Player penalized : penalizedPlayers.keySet()) {
+      int remaining = penalizedPlayers.getOrDefault(penalized, 0);
+      penalized.spigot().sendMessage(
+              ChatMessageType.ACTION_BAR,
+              new TextComponent("§6Penalty Time: §f" + formatTime(remaining))
+      );
+    }
+
+    for (Player ref : this.rink.getRefs()) {
+      Map.Entry<Player, Integer> soonestPenalty = penalizedPlayers.entrySet().stream()
+              .min(Map.Entry.comparingByValue())
+              .orElse(null);
+      if (soonestPenalty == null) {
+        ref.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
+        continue;
+      }
+      String penaltyMessage = "§6" + soonestPenalty.getKey().getName()
+              + "'s Penalty Time: §f" + formatTime(soonestPenalty.getValue());
+      ref.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(penaltyMessage));
     }
 
     for (Player arenaPlayer : this.rink.getAllPlayers()) {
-      arenaPlayer.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(actionBarMessage));
+      if (this.rink.getRefs().contains(arenaPlayer) || penalizedPlayers.containsKey(arenaPlayer)) {
+        continue;
+      }
+      arenaPlayer.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
+    }
+  }
+
+  private void spawnGoalParticles(World world, Location goalCenter, Particle.DustOptions goalDust) {
+    ThreadLocalRandom random = ThreadLocalRandom.current();
+    int particles = 120;
+    double radius = 5.0;
+
+    for (int i = 0; i < particles; i++) {
+      double angle = random.nextDouble(0, Math.PI * 2);
+      double distance = radius * Math.sqrt(random.nextDouble());
+      double xOffset = Math.cos(angle) * distance;
+      double zOffset = Math.sin(angle) * distance;
+      double yOffset = random.nextDouble(0.1, 2.1);
+
+      Location spawn = goalCenter.clone().add(xOffset, yOffset, zOffset);
+      world.spawnParticle(Particle.REDSTONE, spawn, 1, 0.08, 0.08, 0.08, 0.0, goalDust);
     }
   }
 
