@@ -56,10 +56,7 @@ public class GameScoreboard {
         title += "    §6" + delayLabel + ": §f" + formatTime(game.getIntermissionTimeLeft());
       }
 
-      String penaltySummary = game.getPenaltySummary();
-      if (!"None".equalsIgnoreCase(penaltySummary)) {
-        title += "    §cPEN: §f" + penaltySummary;
-      }
+      title += "    " + game.getStrengthSummary();
     }
 
     bossBar.setTitle(title);

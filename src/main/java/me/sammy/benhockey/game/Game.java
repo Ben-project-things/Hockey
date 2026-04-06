@@ -75,6 +75,12 @@ public interface Game {
   String getPenaltySummary();
 
   /**
+   * Gets the current manpower state for scoreboard display (for example, even strength or power play).
+   * @return manpower summary text
+   */
+  String getStrengthSummary();
+
+  /**
    * Adds the touch for the player's given player stats, also calculates the last 4 players to hit.
    * @param player is the player to add the stats to
    */
