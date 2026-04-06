@@ -78,11 +78,11 @@ public class GameStats {
     String name = p.getName() != null ? p.getName() : "Unknown";
 
     if (this.goalie) {
-      return String.format("§b%s §a| §7%d Points §a| §7%d Saves §a| §7%d SOG §a| §7%d Assists §a| §7%d Touches",
-              name, getPoints(), this.saves, this.shotsOnTarget, this.assists, this.touches);
+      return String.format("§b%s §a| §7%d Points §a| §7%d Saves §a| §7%d Assists §a| §7%d SOG §a| §7%d Touches",
+              name, getPoints(), this.saves, this.assists, this.shotsOnTarget, this.touches);
     } else {
-      return String.format("§b%s §a| §7%d Points §a| §7%d Goals §a| §7%d SOG §a| §7%d Assists §a| §7%d Touches",
-              name, getPoints(), this.goals, this.shotsOnTarget, this.assists, this.touches);
+      return String.format("§b%s §a| §7%d Points §a| §7%d Goals §a| §7%d Assists §a| §7%d SOG §a| §7%d Touches",
+              name, getPoints(), this.goals, this.assists, this.shotsOnTarget, this.touches);
     }
   }
 

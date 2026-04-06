@@ -188,7 +188,9 @@ public abstract class AbstractGame implements Game {
    */
   protected void endPeriod() {
     for (Player p : rink.getAllPlayers()) {
-      p.sendTitle("", "§bEnd of Period " + period, 10, 20, 10);
+      p.sendTitle("§bEnd of Period " + period,
+              "§6Score: §c" + homeScore + " §7- §9" + awayScore,
+              10, 20, 10);
       p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
     }
 
@@ -288,7 +290,7 @@ public abstract class AbstractGame implements Game {
     if (gc.isOwnGoal()) {
       String scorerName = gc.getScorer() != null ? gc.getScorer().getName() : "Unknown";
       title = "§" + teamColor + scoringTeamName + " GOAL";
-      subtitle = "§" + teamColor + "Scored by: §7" + scorerName + " §8(Own Goal)";
+      subtitle = "§7Scored by: §" + teamColor + scorerName + " §8(Own Goal)";
     } else {
       title = "§" + teamColor + scoringTeamName + " GOAL";
       subtitle = buildGoalSubtitle(teamColor, gc);
@@ -748,7 +750,7 @@ public abstract class AbstractGame implements Game {
           onlinePlayer.teleport(rink.getPenaltyBox());
         }
         for (Player p : rink.getAllPlayers()) {
-          p.sendTitle("§6Penalty: " + reason, "§7Player: " + playerName + "| Time: " + timeStr +
+          p.sendTitle("§6Penalty: " + reason, "§7Player: " + colorizePenaltyPlayerName(playerName) + "§7 | Time: " + timeStr +
                           "s",
                   10, 40, 10);
         }
@@ -878,6 +880,19 @@ public abstract class AbstractGame implements Game {
       maxGoalZ = Math.max(maxGoalZ, blockLoc.getBlockZ() + 1.0);
     }
 
+    Vector outward = goal.toVector().subtract(this.rink.getCenterIce().toVector()).setY(0);
+    if (Math.abs(outward.getX()) >= Math.abs(outward.getZ())) {
+      if (outward.getX() >= 0) {
+        maxGoalX += 1.0;
+      } else {
+        minGoalX -= 1.0;
+      }
+    } else if (outward.getZ() >= 0) {
+      maxGoalZ += 1.0;
+    } else {
+      minGoalZ -= 1.0;
+    }
+
     BoundingBox puckBox = puckEntity.getBoundingBox();
     return puckBox.getMinX() >= minGoalX
             && puckBox.getMaxX() <= maxGoalX
@@ -927,6 +942,20 @@ public abstract class AbstractGame implements Game {
     }
   }
 
+  private String colorizePenaltyPlayerName(String playerName) {
+    Player online = Bukkit.getPlayerExact(playerName);
+    if (online != null) {
+      String team = this.rink.getTeam(online);
+      if ("home".equalsIgnoreCase(team)) {
+        return "§c" + playerName;
+      }
+      if ("away".equalsIgnoreCase(team)) {
+        return "§9" + playerName;
+      }
+    }
+    return "§7" + playerName;
+  }
+
   private void spawnGoalParticles(World world, Location goalCenter, Particle.DustOptions goalDust) {
     ThreadLocalRandom random = ThreadLocalRandom.current();
     int particles = 100;
@@ -967,13 +996,13 @@ public abstract class AbstractGame implements Game {
 
     String scorer = formatPlayerWithStat(gc.getScorer(), true);
     if (gc.getAssisters().isEmpty()) {
-      return "§" + teamColor + "Scored by: §7" + scorer;
+      return "§7Scored by: §" + teamColor + scorer;
     }
 
     String assists = gc.getAssisters().stream()
-            .map(player -> formatPlayerWithStat(player, false))
-            .collect(Collectors.joining(", §7"));
-    return "§" + teamColor + "Scored by: §7" + scorer + " §" + teamColor + "Assisted By: §7" + assists;
+            .map(player -> "§" + teamColor + formatPlayerWithStat(player, false))
+            .collect(Collectors.joining("§7, "));
+    return "§7Scored by: §" + teamColor + scorer + " §7Assisted By: " + assists;
   }
 
   private String formatPlayerWithStat(Player player, boolean goals) {
