@@ -472,7 +472,7 @@ public class PlayerHockeyListener implements Listener {
         Vector flatForward = forward.clone().setY(0).normalize();
         Vector boosted = existingVelocity.clone();
         if (hitLevel >= 3) {
-          boosted.add(flatForward.multiply(1.12));
+          boosted.add(flatForward.multiply(1.05));
         }
 
         double basePop = 0.07 + (hitLevel * 0.03);
