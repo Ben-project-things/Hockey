@@ -277,7 +277,7 @@ public abstract class AbstractGame implements Game {
       Particle.DustOptions goalDust = scoringTeam.equalsIgnoreCase("home")
               ? new Particle.DustOptions(org.bukkit.Color.BLUE, 1.6f)
               : new Particle.DustOptions(org.bukkit.Color.RED, 1.6f);
-      world.spawnParticle(Particle.DUST, goalLoc, 28, 1.2, 0.8, 1.2, 0.01, goalDust);
+      world.spawnParticle(Particle.REDSTONE, goalLoc, 28, 1.2, 0.8, 1.2, 0.01, goalDust);
       world.playSound(goalLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
       pushPlayersFromGoal(goalLoc);
     }
@@ -340,7 +340,7 @@ public abstract class AbstractGame implements Game {
       this.intermissionTimer.cancel();
     }
 
-    if (this.intermissionLabel == null || this.intermissionLabel.isBlank()) {
+    if (this.intermissionLabel == null || this.intermissionLabel.isEmpty()) {
       this.intermissionLabel = "Faceoff";
     }
     this.intermissionTimeLeft = seconds * 1000;
