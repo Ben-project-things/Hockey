@@ -492,7 +492,7 @@ public class PlayerHockeyListener implements Listener {
         sideShuffle.multiply(0.72);
         sideShuffle.setY(shiftLift ? Math.max(updatedVelocity.getY(), getShiftLift(charge)) : 0.0);
         slime.setVelocity(sideShuffle);
-        Vector playerSlide = sideShuffle.clone().multiply(0.62).setY(Math.max(player.getVelocity().getY(), 0.02));
+        Vector playerSlide = sideShuffle.clone().multiply(0.62);
         player.setVelocity(playerSlide);
         return;
       }
