@@ -491,6 +491,10 @@ public abstract class AbstractGame implements Game {
 
   @Override
   public String getStrengthSummary() {
+    if (this.activePenalties.isEmpty()) {
+      return "";
+    }
+
     int homePenalties = 0;
     int awayPenalties = 0;
     int homeSoonest = Integer.MAX_VALUE;
@@ -512,20 +516,11 @@ public abstract class AbstractGame implements Game {
       }
     }
 
-    if (homePenalties == awayPenalties) {
-      if (homePenalties == 0) {
-        return "§eEven Strength";
-      }
+    if (homePenalties == awayPenalties && homePenalties > 0) {
       int remaining = Math.min(homeSoonest, awaySoonest);
       return "§eEven Strength: §f" + formatTime(remaining);
     }
-    if (homePenalties > awayPenalties) {
-      int remaining = homeSoonest == Integer.MAX_VALUE ? 0 : homeSoonest;
-      return "§9Power Play: §f" + formatTime(remaining);
-    }
-
-    int remaining = awaySoonest == Integer.MAX_VALUE ? 0 : awaySoonest;
-    return "§cPower Play: §f" + formatTime(remaining);
+    return "";
   }
 
   @Override
@@ -589,6 +584,16 @@ public abstract class AbstractGame implements Game {
   @Override
   public boolean isFaceoffFirstTouch() {
     return this.firstFaceoffTouchPending;
+  }
+
+  @Override
+  public boolean consumeFaceoffFirstTouch() {
+    if (!this.firstFaceoffTouchPending) {
+      return false;
+    }
+
+    this.firstFaceoffTouchPending = false;
+    return true;
   }
 
 
