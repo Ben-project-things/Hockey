@@ -408,6 +408,8 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
+    e.setCancelled(true);
+
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
     long gloveCooldownEnd = this.goalieGloveReleaseCooldownMillis.getOrDefault(player.getUniqueId(), 0L);
@@ -1020,7 +1022,6 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(newVelocity.getZ() * 0.965);
     }
     slime.setVelocity(newVelocity);
-    slime.setNoDamageTicks(Math.max(0, Math.min(BOARD_BOUNCE_NO_DAMAGE_TICKS, slime.getMaximumNoDamageTicks())));
   }
 
   private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
