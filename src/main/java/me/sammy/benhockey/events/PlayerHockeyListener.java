@@ -64,7 +64,7 @@ public class PlayerHockeyListener implements Listener {
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
-  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 10;
+  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
   private final JavaPlugin plugin;
@@ -76,7 +76,6 @@ public class PlayerHockeyListener implements Listener {
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
   private final Map<UUID, UUID> recentGoalieBouncePlayer = new HashMap<>();
-  private final Map<UUID, Long> boardBounceCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
@@ -802,7 +801,6 @@ public class PlayerHockeyListener implements Listener {
     this.lastPuckVelocity.keySet().retainAll(livePucks);
     this.recentGoalieBounceMillis.keySet().retainAll(livePucks);
     this.recentGoalieBouncePlayer.keySet().retainAll(livePucks);
-    this.boardBounceCooldownMillis.keySet().retainAll(livePucks);
     this.goalieGloveReleaseCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 5000L);
     this.playerHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 1000L);
     this.shiftLiftHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue());
@@ -995,6 +993,9 @@ public class PlayerHockeyListener implements Listener {
         BlockFace pushOutFace = velocity.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
         pushPuckOutOfBlock(slime, pushOutFace);
       }
+      Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
+      slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
+      slime.setNoDamageTicks(BOARD_BOUNCE_NO_DAMAGE_TICKS);
       slime.setVelocity(newVelocity);
     }
 
@@ -1002,11 +1003,6 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setX(newVelocity.getX() * 0.965);
       newVelocity.setZ(newVelocity.getZ() * 0.965);
     }
-
-    Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
-    slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
-    slime.setVelocity(newVelocity);
-    slime.setNoDamageTicks(BOARD_BOUNCE_NO_DAMAGE_TICKS);
   }
 
   private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
