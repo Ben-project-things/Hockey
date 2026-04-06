@@ -1476,7 +1476,6 @@ public class PlayerHockeyListener implements Listener {
 
     damaged.setVelocity(knockback);
     damaged.playEffect(EntityEffect.HURT);
-    damager.playEffect(EntityEffect.HURT);
     damaged.getWorld().spawnParticle(Particle.DAMAGE_INDICATOR, damaged.getLocation().add(0, 1.05, 0), 8, 0.25, 0.35, 0.25, 0.0);
     damaged.getWorld().playSound(damaged.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1f, 0.9f + (hitLevel * 0.07f));
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
