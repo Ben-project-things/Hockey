@@ -64,7 +64,7 @@ public class PlayerHockeyListener implements Listener {
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
-  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 20;
+  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
   private final JavaPlugin plugin;
@@ -426,12 +426,6 @@ public class PlayerHockeyListener implements Listener {
 
     playerRink.addPlayerLastHit(player);
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
-    if (dangleMode) {
-      slime.playEffect(EntityEffect.HURT);
-      if (hitLevel <= 2) {
-        slime.setNoDamageTicks(0);
-      }
-    }
 
     double charge = getShiftCharge(player);
     boolean wantsShiftLift = player.isSneaking() && charge > 0.02;
@@ -444,6 +438,13 @@ public class PlayerHockeyListener implements Listener {
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
       if (slime.isDead() || !slime.isValid()) {
         return;
+      }
+
+      if (dangleMode) {
+        slime.playEffect(EntityEffect.HURT);
+        if (hitLevel <= 2) {
+          slime.setNoDamageTicks(0);
+        }
       }
 
       Vector updatedVelocity = slime.getVelocity();
@@ -468,7 +469,7 @@ public class PlayerHockeyListener implements Listener {
         Vector existingVelocity = slime.getVelocity().clone();
         Vector flatForward = forward.clone().setY(0).normalize();
         Vector boosted = existingVelocity.clone();
-        if (hitLevel >= 3) {
+        if (hitLevel == 3) {
           boosted.add(flatForward);
         }
 
@@ -522,7 +523,7 @@ public class PlayerHockeyListener implements Listener {
         }
       }
 
-      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.3));
+      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.15));
       double basePop = 0.07 + (hitLevel * 0.03);
       if (shiftLift) {
         boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
