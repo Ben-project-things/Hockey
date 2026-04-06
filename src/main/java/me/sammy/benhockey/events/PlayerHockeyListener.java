@@ -407,6 +407,7 @@ public class PlayerHockeyListener implements Listener {
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
+
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
 
@@ -422,44 +423,104 @@ public class PlayerHockeyListener implements Listener {
     boolean firstFaceoffTouch = playerRink != null && playerRink.isFaceoffFirstTouch();
     boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
-    if (firstFaceoffTouch && hitLevel >= 3) {
-      hitLevel = 3;
-    }
-    e.setCancelled(true);
+
     this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
+    Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
     if (dangleMode) {
       slime.playEffect(EntityEffect.HURT);
+      if (hitLevel <= 2) {
+        slime.setNoDamageTicks(0);
+      }
+    } else {
+      e.setDamage(0.0);
     }
 
     double charge = getShiftCharge(player);
-    boolean shiftLift = !firstFaceoffTouch && player.isSneaking() && charge > 0.02;
+    boolean shiftLift = player.isSneaking() && charge > 0.02;
     this.resetPower(player);
-    if (slime.isDead() || !slime.isValid()) {
-      return;
-    }
-    if (dangleMode && hitLevel <= 2) {
-      slime.setNoDamageTicks(0);
-    }
 
-    Vector updatedVelocity = slime.getVelocity();
-    Vector forward = player.getLocation().getDirection().setY(0);
-    if (forward.lengthSquared() < 0.0001) {
-      forward = new Vector(0, 0, 1);
-    }
-    forward.normalize();
-    Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
+    Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+      if (slime.isDead() || !slime.isValid()) {
+        return;
+      }
+      if (dangleMode && hitLevel <= 2) {
+        slime.setNoDamageTicks(0);
+      }
 
-    if (firstFaceoffTouch && hitLevel >= 2) {
-      double faceoffPullDistance = hitLevel >= 3 ? 3.0 : 1.0;
-      Vector faceoffPull = forward.clone().multiply(-faceoffPullDistance);
-      faceoffPull.setY(0.0);
-      slime.setVelocity(faceoffPull);
-      registerShotOnTargetIfNeeded(player, slime);
-      return;
-    }
+      Vector updatedVelocity = slime.getVelocity();
+      Vector forward = player.getLocation().getDirection().setY(0);
+      if (forward.lengthSquared() < 0.0001) {
+        forward = new Vector(0, 0, 1);
+      }
+      forward.normalize();
+      Vector right = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
 
-    if (!dangleMode) {
-      Vector existingVelocity = slime.getVelocity().clone();
+      if (firstFaceoffTouch && hitLevel >= 2) {
+        double faceoffPullDistance = hitLevel >= 3 ? 3.0 : 1.0;
+        Vector faceoffPull = forward.clone().multiply(-faceoffPullDistance);
+        faceoffPull.setY(0.0);
+        slime.setVelocity(faceoffPull);
+        registerShotOnTargetIfNeeded(player, slime);
+        return;
+      }
+
+      if (!dangleMode) {
+        Vector existingVelocity = slime.getVelocity().clone();
+        Vector horizontalMomentum = existingVelocity.clone().setY(0);
+        Vector shotDirection = forward.clone();
+        if (horizontalMomentum.lengthSquared() > 0.0001) {
+          Vector momentumDirection = horizontalMomentum.clone().normalize();
+          if (momentumDirection.dot(forward) >= 0) {
+            shotDirection = momentumDirection;
+          }
+        }
+
+        double addedForce = (hitLevel == 3) ? 1.2 : 0.0;
+        Vector boosted = horizontalMomentum.clone();
+        if (addedForce > 0.0) {
+          boosted.add(shotDirection.multiply(addedForce));
+        }
+
+        double basePop = 0.07 + (hitLevel * 0.03);
+        if (shiftLift) {
+          boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+        } else {
+          boosted.setY(Math.max(existingVelocity.getY(), basePop));
+        }
+        slime.setVelocity(boosted);
+        return;
+      }
+
+      if (hitLevel == 1) {
+        Vector toPuck = slime.getLocation().toVector().subtract(player.getLocation().toVector()).setY(0);
+        if (toPuck.lengthSquared() < 0.0001) {
+          toPuck = forward.clone();
+        } else {
+          toPuck.normalize();
+        }
+        double sideDot = toPuck.dot(right);
+        Vector sideShuffle = sideDot < 0 ? right.clone() : right.clone().multiply(-1);
+        sideShuffle.multiply(0.72);
+        sideShuffle.setY(shiftLift ? Math.max(updatedVelocity.getY(), getShiftLift(charge)) : 0.0);
+        slime.setVelocity(sideShuffle);
+        Vector playerSlide = sideShuffle.clone().multiply(0.62).setY(Math.max(player.getVelocity().getY(), 0.02));
+        player.setVelocity(playerSlide);
+        return;
+      }
+
+      if (hitLevel == 2) {
+        Vector pull = updatedVelocity.clone().setY(0).multiply(-0.18);
+        Vector backward = forward.clone().multiply(-0.42);
+        pull.add(backward);
+        if (pull.lengthSquared() < 0.06) {
+          pull = backward;
+        }
+        pull.setY(shiftLift ? getShiftLift(charge) : 0.0);
+        slime.setVelocity(pull);
+        return;
+      }
+
+      Vector existingVelocity = updatedVelocity.clone();
       Vector horizontalMomentum = existingVelocity.clone().setY(0);
       Vector shotDirection = forward.clone();
       if (horizontalMomentum.lengthSquared() > 0.0001) {
@@ -469,78 +530,15 @@ public class PlayerHockeyListener implements Listener {
         }
       }
 
-      double addedForce = (hitLevel == 3) ? 1.2 : 0.0;
-      Vector boosted = horizontalMomentum.clone();
-      if (addedForce > 0.0) {
-        boosted.add(shotDirection.multiply(addedForce));
-      }
-
+      Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.45));
       double basePop = 0.07 + (hitLevel * 0.03);
       if (shiftLift) {
-        boosted.setY(getPuckLiftY(slime, existingVelocity.getY(), basePop, getShiftLift(charge)));
+        boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
       } else {
         boosted.setY(Math.max(existingVelocity.getY(), basePop));
       }
       slime.setVelocity(boosted);
-      registerShotOnTargetIfNeeded(player, slime);
-      return;
-    }
-
-    if (hitLevel == 1) {
-      Vector toPuck = slime.getLocation().toVector().subtract(player.getLocation().toVector()).setY(0);
-      if (toPuck.lengthSquared() < 0.0001) {
-        toPuck = forward.clone();
-      } else {
-        toPuck.normalize();
-      }
-      double sideDot = toPuck.dot(right);
-      Vector sideShuffle = sideDot < 0 ? right.clone() : right.clone().multiply(-1);
-      sideShuffle.multiply(0.72);
-      sideShuffle.setY(shiftLift
-              ? getPuckLiftY(slime, updatedVelocity.getY(), 0.0, getShiftLift(charge))
-              : 0.0);
-      slime.setVelocity(sideShuffle);
-      double playerY = player.isOnGround() ? Math.max(0.0, player.getVelocity().getY()) : player.getVelocity().getY();
-      Vector playerSlide = sideShuffle.clone().multiply(0.62).setY(playerY);
-      player.setVelocity(playerSlide);
-      registerShotOnTargetIfNeeded(player, slime);
-      return;
-    }
-
-    if (hitLevel == 2) {
-      Vector pull = updatedVelocity.clone().setY(0).multiply(-0.18);
-      Vector backward = forward.clone().multiply(-0.42);
-      pull.add(backward);
-      if (pull.lengthSquared() < 0.06) {
-        pull = backward;
-      }
-      pull.setY(shiftLift
-              ? getPuckLiftY(slime, updatedVelocity.getY(), 0.0, getShiftLift(charge))
-              : 0.0);
-      slime.setVelocity(pull);
-      registerShotOnTargetIfNeeded(player, slime);
-      return;
-    }
-
-    Vector existingVelocity = updatedVelocity.clone();
-    Vector horizontalMomentum = existingVelocity.clone().setY(0);
-    Vector shotDirection = forward.clone();
-    if (horizontalMomentum.lengthSquared() > 0.0001) {
-      Vector momentumDirection = horizontalMomentum.clone().normalize();
-      if (momentumDirection.dot(forward) >= 0) {
-        shotDirection = momentumDirection;
-      }
-    }
-
-    Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.45));
-    double basePop = 0.07 + (hitLevel * 0.03);
-    if (shiftLift) {
-      boosted.setY(getPuckLiftY(slime, existingVelocity.getY(), basePop, getShiftLift(charge)));
-    } else {
-      boosted.setY(Math.max(existingVelocity.getY(), basePop));
-    }
-    slime.setVelocity(boosted);
-    registerShotOnTargetIfNeeded(player, slime);
+    }, 1L);
   }
 
   private double getShiftCharge(Player player) {
