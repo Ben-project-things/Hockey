@@ -929,7 +929,7 @@ public abstract class AbstractGame implements Game {
 
   private void spawnGoalParticles(World world, Location goalCenter, Particle.DustOptions goalDust) {
     ThreadLocalRandom random = ThreadLocalRandom.current();
-    int particles = 120;
+    int particles = 100;
     double radius = 5.0;
 
     for (int i = 0; i < particles; i++) {
@@ -940,7 +940,7 @@ public abstract class AbstractGame implements Game {
       double yOffset = random.nextDouble(0.1, 2.1);
 
       Location spawn = goalCenter.clone().add(xOffset, yOffset, zOffset);
-      world.spawnParticle(Particle.REDSTONE, spawn, 1, 0.08, 0.08, 0.08, 0.0, goalDust);
+      world.spawnParticle(Particle.REDSTONE, spawn, 1, 0.1, 0.1, 0.1, 0.2, goalDust);
     }
   }
 
