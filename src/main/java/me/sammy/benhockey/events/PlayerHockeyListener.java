@@ -421,7 +421,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Rink playerRink = this.lobbyManager.getPlayerRink(player);
-    boolean firstFaceoffTouch = playerRink != null && playerRink.isFaceoffFirstTouch();
+    boolean firstFaceoffTouch = playerRink != null && playerRink.consumeFaceoffFirstTouch();
     boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
 

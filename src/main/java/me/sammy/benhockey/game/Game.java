@@ -111,6 +111,13 @@ public interface Game {
   boolean isFaceoffFirstTouch();
 
   /**
+   * Consumes the faceoff-first-touch flag and returns whether it had been pending.
+   * This should be used when logic must run at most once per faceoff drop.
+   * @return true if first faceoff touch was pending and is now consumed
+   */
+  boolean consumeFaceoffFirstTouch();
+
+  /**
    * Skip the face off timer delay between periods and goals.
    */
   void skipFaceOff(Player player);

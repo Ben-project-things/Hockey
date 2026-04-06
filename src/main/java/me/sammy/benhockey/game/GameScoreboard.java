@@ -56,7 +56,10 @@ public class GameScoreboard {
         title += "    §6" + delayLabel + ": §f" + formatTime(game.getIntermissionTimeLeft());
       }
 
-      title += "    " + game.getStrengthSummary();
+      String strengthSummary = game.getStrengthSummary();
+      if (!strengthSummary.isEmpty()) {
+        title += "    " + strengthSummary;
+      }
     }
 
     bossBar.setTitle(title);

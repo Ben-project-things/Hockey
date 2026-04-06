@@ -643,6 +643,14 @@ public class Rink {
   }
 
   /**
+   * Consumes and returns whether the next puck touch was still the first one after faceoff.
+   * @return true when the flag was pending and is now consumed
+   */
+  public boolean consumeFaceoffFirstTouch() {
+    return this.game != null && this.state == GameState.GAME && this.game.consumeFaceoffFirstTouch();
+  }
+
+  /**
    * Updates the time of the current game.
    * @param time is the time to change it to.
    * @param p is the player that sent the command
