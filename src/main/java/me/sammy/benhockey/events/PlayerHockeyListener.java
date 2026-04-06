@@ -421,11 +421,15 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Rink playerRink = this.lobbyManager.getPlayerRink(player);
-    boolean firstFaceoffTouch = playerRink != null && playerRink.consumeFaceoffFirstTouch();
+    if (playerRink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
+      return;
+    }
+
+    boolean firstFaceoffTouch = playerRink.consumeFaceoffFirstTouch();
     boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
 
-    this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
+    playerRink.addPlayerLastHit(player);
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
     if (dangleMode) {
       slime.playEffect(EntityEffect.HURT);
@@ -466,21 +470,18 @@ public class PlayerHockeyListener implements Listener {
 
       if (!dangleMode) {
         Vector existingVelocity = slime.getVelocity().clone();
-        Vector boosted = existingVelocity.clone();
+        Vector flatForward = forward.clone().setY(0).normalize();
+        double forwardImpulse = 0.58 + (0.26 * hitLevel);
+        Vector boosted = existingVelocity.clone().add(flatForward.multiply(forwardImpulse));
 
-        if (hitLevel == 3) {
-          Vector flatForward = forward.clone().setY(0).normalize();
-          boosted.add(flatForward.multiply(1.1));
-        }
-
+        double basePop = 0.07 + (hitLevel * 0.03);
         if (shiftLift) {
-          double basePop = 0.07 + (hitLevel * 0.03);
           boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+        } else if (hitLevel >= 2) {
+          boosted.setY(Math.max(existingVelocity.getY(), basePop));
         }
 
-        if (hitLevel == 3 || shiftLift) {
-          slime.setVelocity(boosted);
-        }
+        slime.setVelocity(boosted);
         return;
       }
 
@@ -1346,7 +1347,14 @@ public class PlayerHockeyListener implements Listener {
     }
     forward.normalize();
     Vector left = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
-    Location base = goalie.getLocation().clone().add(forward.clone().multiply(0.52));
+    Vector goalieVelocity = goalie.getVelocity().clone().setY(0);
+    if (goalieVelocity.lengthSquared() > 0.0001) {
+      goalieVelocity.multiply(0.8);
+    }
+
+    Location base = goalie.getLocation().clone()
+            .add(forward.clone().multiply(0.52))
+            .add(goalieVelocity);
     float padYaw = goalie.getLocation().getYaw();
 
     Location leftPad = base.clone().add(left.clone().multiply(0.22));

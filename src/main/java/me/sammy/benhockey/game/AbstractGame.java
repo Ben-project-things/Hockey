@@ -12,6 +12,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -172,9 +173,9 @@ public abstract class AbstractGame implements Game {
         Location previousLoc = lastPuckLocation;
         lastPuckLocation = loc.clone();
 
-        if (isEntirePuckInsideGoalZone(loc, "home")) {
+        if (isEntirePuckInsideGoalZone(puck, "home")) {
           scoreGoal("away");
-        } else if (isEntirePuckInsideGoalZone(loc, "away")) {
+        } else if (isEntirePuckInsideGoalZone(puck, "away")) {
           scoreGoal("home");
         } else if (previousLoc != null) {
           if (didCrossGoalLine(previousLoc, loc, "home")) {
@@ -288,13 +289,14 @@ public abstract class AbstractGame implements Game {
     String title;
     String subtitle;
 
+    String scoringTeamName = scoringTeam.equalsIgnoreCase("home")
+            ? this.rink.getHomeTeamName()
+            : this.rink.getAwayTeamName();
     if (gc.isOwnGoal()) {
-      title = "§6Own Goal";
-      subtitle = "§" + teamColor + "Scored by: §7" + (gc.getScorer() != null ? gc.getScorer().getName() : "Unknown");
+      String scorerName = gc.getScorer() != null ? gc.getScorer().getName() : "Unknown";
+      title = "§" + teamColor + scoringTeamName + " GOAL";
+      subtitle = "§" + teamColor + "Scored by: §7" + scorerName + " §8(Own Goal)";
     } else {
-      String scoringTeamName = scoringTeam.equalsIgnoreCase("home")
-              ? this.rink.getHomeTeamName()
-              : this.rink.getAwayTeamName();
       title = "§" + teamColor + scoringTeamName + " GOAL";
       subtitle = buildGoalSubtitle(teamColor, gc);
     }
@@ -902,7 +904,7 @@ public abstract class AbstractGame implements Game {
     return crossY >= goal.getY() - 0.9 && crossY <= goal.getY() + 2.4;
   }
 
-  private boolean isEntirePuckInsideGoalZone(Location puckLoc, String defendedSide) {
+  private boolean isEntirePuckInsideGoalZone(Entity puckEntity, String defendedSide) {
     Location goal = "home".equalsIgnoreCase(defendedSide)
             ? this.rink.getHomeGoalCenter()
             : this.rink.getAwayGoalCenter();
@@ -912,8 +914,13 @@ public abstract class AbstractGame implements Game {
     double goalDz = goal.getZ() - center.getZ();
     boolean useXAxis = Math.abs(goalDx) >= Math.abs(goalDz);
 
-    double axisCoord = useXAxis ? puckLoc.getX() : puckLoc.getZ();
-    double lateralCoord = useXAxis ? puckLoc.getZ() : puckLoc.getX();
+    BoundingBox puckBox = puckEntity.getBoundingBox();
+    double axisCoord = useXAxis ? puckBox.getCenterX() : puckBox.getCenterZ();
+    double lateralCoord = useXAxis ? puckBox.getCenterZ() : puckBox.getCenterX();
+    double minAxis = useXAxis ? puckBox.getMinX() : puckBox.getMinZ();
+    double maxAxis = useXAxis ? puckBox.getMaxX() : puckBox.getMaxZ();
+    double minLateral = useXAxis ? puckBox.getMinZ() : puckBox.getMinX();
+    double maxLateral = useXAxis ? puckBox.getMaxZ() : puckBox.getMaxX();
     double goalAxis = useXAxis ? goal.getX() : goal.getZ();
     double goalLateral = useXAxis ? goal.getZ() : goal.getX();
     double towardGoalSign = useXAxis ? Math.signum(goalDx) : Math.signum(goalDz);
@@ -921,17 +928,18 @@ public abstract class AbstractGame implements Game {
       towardGoalSign = 1.0;
     }
 
-    double forwardExtent = 0.35;
-    double lateralExtent = 0.35;
-    double fullInsideAxis = goalAxis + towardGoalSign * (1.0 + forwardExtent);
-    boolean axisInside = towardGoalSign > 0 ? axisCoord >= fullInsideAxis : axisCoord <= fullInsideAxis;
+    double fullInsideAxis = goalAxis + towardGoalSign * 1.0;
+    boolean axisInside = towardGoalSign > 0 ? minAxis >= fullInsideAxis : maxAxis <= fullInsideAxis;
     if (!axisInside) {
       return false;
     }
 
-    return Math.abs(lateralCoord - goalLateral) <= (2.5 - lateralExtent)
-            && puckLoc.getY() >= goal.getY() - 0.82
-            && puckLoc.getY() <= goal.getY() + 2.28;
+    return minLateral >= goalLateral - 2.5
+            && maxLateral <= goalLateral + 2.5
+            && puckBox.getMinY() >= goal.getY() - 0.82
+            && puckBox.getMaxY() <= goal.getY() + 2.28
+            && Math.abs(lateralCoord - goalLateral) <= 2.5
+            && (towardGoalSign > 0 ? axisCoord >= fullInsideAxis : axisCoord <= fullInsideAxis);
   }
 
   private void sendPenaltyTimers() {
