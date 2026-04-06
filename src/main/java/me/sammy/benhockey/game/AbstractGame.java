@@ -271,7 +271,7 @@ public abstract class AbstractGame implements Game {
 
     World world = goalLoc.getWorld();
     if (world != null) {
-      world.spawnParticle(Particle.EXPLOSION, goalLoc, 10, 1.2, 0.8, 1.2, 0.02);
+      world.spawnParticle(Particle.TOTEM, goalLoc, 10, 1.2, 0.8, 1.2, 0.02);
       world.playSound(goalLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
       pushPlayersFromGoal(goalLoc);
     }
