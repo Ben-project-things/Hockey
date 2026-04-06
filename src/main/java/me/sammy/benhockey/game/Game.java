@@ -62,6 +62,13 @@ public interface Game {
   int getIntermissionTimeLeft();
 
   /**
+   * Gets the label for the active delay timer shown on the scoreboard.
+   * Typical values are "Faceoff" between goals and "Intermission" between periods.
+   * @return delay label
+   */
+  String getIntermissionLabel();
+
+  /**
    * Gets a compact, scoreboard-friendly list of active penalties and their remaining times.
    * @return active penalty summary text
    */
