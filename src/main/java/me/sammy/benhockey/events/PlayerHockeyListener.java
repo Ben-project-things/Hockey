@@ -21,8 +21,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -65,8 +63,7 @@ public class PlayerHockeyListener implements Listener {
   private static final int GOALIE_GLOVE_REGRAB_COOLDOWN_TICKS = 10;
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
-  private static final long BOARD_BOUNCE_COOLDOWN_MS = 420L;
-  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 16;
+  private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 10;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
   private final JavaPlugin plugin;
@@ -407,8 +404,6 @@ public class PlayerHockeyListener implements Listener {
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
-
-    e.setCancelled(true);
 
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
@@ -966,7 +961,6 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(Math.abs(velocity.getZ()) * 0.62);
     }
 
-    // Fallback: when axis motion is suddenly killed by a nearby wall, bounce from previous tick velocity.
     if (!bounceX
             && Math.abs(oldVelocity.getX()) > 0.08
             && Math.abs(velocity.getX()) < 0.0001
@@ -983,7 +977,6 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setZ(-oldVelocity.getZ() * 0.8);
     }
 
-    // Small floor bounce from the air (intentionally flat for hockey puck behavior).
     if (slime.isOnGround() && oldVelocity.getY() < -0.16) {
       double flatFloorBounce = Math.min(0.09, Math.abs(oldVelocity.getY()) * 0.22);
       newVelocity.setY(Math.max(newVelocity.getY(), flatFloorBounce));
@@ -1005,22 +998,16 @@ public class PlayerHockeyListener implements Listener {
         BlockFace pushOutFace = velocity.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
         pushPuckOutOfBlock(slime, pushOutFace);
       }
-
       slime.setVelocity(newVelocity);
-      Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
-      long nowBounce = nowMillis();
-      long nextAllowed = this.boardBounceCooldownMillis.getOrDefault(slime.getUniqueId(), 0L);
-      if (nowBounce >= nextAllowed) {
-        slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
-        this.boardBounceCooldownMillis.put(slime.getUniqueId(), nowBounce + BOARD_BOUNCE_COOLDOWN_MS);
-      }
-      return;
     }
 
     if (slime.isOnGround()) {
       newVelocity.setX(newVelocity.getX() * 0.965);
       newVelocity.setZ(newVelocity.getZ() * 0.965);
     }
+
+    Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
+    slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
     slime.setVelocity(newVelocity);
   }
 
@@ -1049,7 +1036,8 @@ public class PlayerHockeyListener implements Listener {
     }
 
     for (Material material : collisionMaterials) {
-      if (material == Material.RED_CONCRETE || material == Material.BLUE_CONCRETE) {
+      if (material == Material.RED_CONCRETE || material == Material.BLUE_CONCRETE
+      || material == Material.RED_STAINED_GLASS || material == Material.BLUE_STAINED_GLASS) {
         return Sound.BLOCK_BELL_USE;
       }
     }
