@@ -1018,6 +1018,7 @@ public class PlayerHockeyListener implements Listener {
     Sound boardBounceSound = getBoardBounceSound(puckLoc, velocity, bounceX, bounceZ, lookAheadX, lookAheadZ);
     slime.getWorld().playSound(puckLoc, boardBounceSound, 100f, 0.2f);
     slime.setVelocity(newVelocity);
+    slime.setNoDamageTicks(BOARD_BOUNCE_NO_DAMAGE_TICKS);
   }
 
   private Sound getBoardBounceSound(Location puckLoc, Vector velocity, boolean bounceX, boolean bounceZ,
