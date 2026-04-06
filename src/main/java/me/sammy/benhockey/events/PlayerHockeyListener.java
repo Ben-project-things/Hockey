@@ -407,11 +407,9 @@ public class PlayerHockeyListener implements Listener {
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
     }
-    slime.setNoDamageTicks(0);
 
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
-
     long gloveCooldownEnd = this.goalieGloveReleaseCooldownMillis.getOrDefault(player.getUniqueId(), 0L);
     if (lobbyManager.isPlayerAKeeper(player) && speed > 0.3 && now >= gloveCooldownEnd) {
       handleGoalieGlove(player, slime);
