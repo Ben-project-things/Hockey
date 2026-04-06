@@ -460,6 +460,7 @@ public class PlayerHockeyListener implements Listener {
         Vector faceoffPull = forward.clone().multiply(-faceoffPullDistance);
         faceoffPull.setY(0.0);
         slime.setVelocity(faceoffPull);
+        slime.playEffect(EntityEffect.HURT);
         registerShotOnTargetIfNeeded(player, slime);
         return;
       }
