@@ -24,6 +24,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -64,6 +65,11 @@ public class PlayerHockeyListener implements Listener {
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
+  private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.82;
+  private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.58;
+  private static final double DANGLE_LEVEL_ONE_PLAYER_SLIDE_MULTIPLIER = 0.50;
+  private static final double SHIFT_LIFT_BASE_Y = 0.52;
+  private static final double SHIFT_LIFT_SCALE_Y = 0.30;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
@@ -105,6 +111,17 @@ public class PlayerHockeyListener implements Listener {
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
     this.recentGoalieBouncePlayer.values().removeIf(id -> id.equals(e.getPlayer().getUniqueId()));
+  }
+
+  @EventHandler
+  public void onPlayerJoin(PlayerJoinEvent e) {
+    Player player = e.getPlayer();
+    UUID playerId = player.getUniqueId();
+    this.dangleModePlayers.remove(playerId);
+    this.charges.remove(playerId);
+    this.shiftLiftHitCooldownMillis.remove(playerId);
+    player.removePotionEffect(PotionEffectType.POISON);
+    player.removePotionEffect(PotionEffectType.SLOW);
   }
 
   @EventHandler
@@ -430,7 +447,11 @@ public class PlayerHockeyListener implements Listener {
     double charge = getShiftCharge(player);
     boolean wantsShiftLift = player.isSneaking() && charge > 0.02;
     long shiftLiftCooldownEnd = this.shiftLiftHitCooldownMillis.getOrDefault(player.getUniqueId(), 0L);
-    boolean shiftLift = wantsShiftLift && now >= shiftLiftCooldownEnd;
+    if (player.isSneaking() && now < shiftLiftCooldownEnd) {
+      e.setCancelled(true);
+      return;
+    }
+    boolean shiftLift = wantsShiftLift;
     if (!wantsShiftLift || shiftLift) {
       this.resetPower(player);
     }
@@ -470,7 +491,7 @@ public class PlayerHockeyListener implements Listener {
         Vector flatForward = forward.clone().setY(0).normalize();
         Vector boosted = existingVelocity.clone();
         if (hitLevel == 3) {
-          boosted.add(flatForward);
+          boosted.add(flatForward.multiply(NON_DANGLE_LEVEL_THREE_FORWARD_BOOST));
         }
 
         double basePop = 0.07 + (hitLevel * 0.03);
@@ -493,11 +514,19 @@ public class PlayerHockeyListener implements Listener {
         }
         double sideDot = toPuck.dot(right);
         Vector sideShuffle = sideDot < 0 ? right.clone() : right.clone().multiply(-1);
-        sideShuffle.multiply(0.72);
-        sideShuffle.setY(shiftLift ? Math.max(updatedVelocity.getY(), getShiftLift(charge)) : 0.0);
+        Vector puckDirection = updatedVelocity.clone().setY(0);
+        if (puckDirection.lengthSquared() > 0.0001) {
+          sideShuffle = puckDirection.normalize();
+        }
+        sideShuffle.multiply(DANGLE_LEVEL_ONE_SLIDE_STRENGTH);
+        sideShuffle.setY(0.0);
         slime.setVelocity(sideShuffle);
-        Vector playerSlide = sideShuffle.clone().multiply(0.62);
+        Vector playerSlide = sideShuffle.clone().multiply(DANGLE_LEVEL_ONE_PLAYER_SLIDE_MULTIPLIER);
+        playerSlide.setY(0.0);
         player.setVelocity(playerSlide);
+        if (player.isSneaking()) {
+          this.shiftLiftHitCooldownMillis.put(player.getUniqueId(), nowMillis() + SHIFT_LIFT_HIT_COOLDOWN_MS);
+        }
         return;
       }
 
@@ -545,7 +574,7 @@ public class PlayerHockeyListener implements Listener {
   private double getShiftLift(double charge) {
     double clampedCharge = Math.max(0.0, Math.min(1.0, charge));
     double eased = Math.pow(clampedCharge, 0.65);
-    return 0.58 + (eased * 0.34);
+    return SHIFT_LIFT_BASE_Y + (eased * SHIFT_LIFT_SCALE_Y);
   }
 
   private double getPuckLiftY(Slime slime, double currentY, double basePop, double requestedLift) {
@@ -904,12 +933,17 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    Vector velocity = slime.getVelocity();
-    Vector newVelocity = velocity.clone();
-    newVelocity.setY(Math.max(velocity.getY(), bounceY));
-    newVelocity.setX(newVelocity.getX() * 0.96);
-    newVelocity.setZ(newVelocity.getZ() * 0.96);
-    slime.setVelocity(newVelocity);
+    Bukkit.getScheduler().runTask(this.plugin, () -> {
+      if (slime.isDead() || !slime.isValid()) {
+        return;
+      }
+      Vector velocity = slime.getVelocity();
+      Vector newVelocity = velocity.clone();
+      newVelocity.setY(Math.max(velocity.getY(), bounceY));
+      newVelocity.setX(newVelocity.getX() * 0.96);
+      newVelocity.setZ(newVelocity.getZ() * 0.96);
+      slime.setVelocity(newVelocity);
+    });
     slime.getWorld().playSound(slime.getLocation(), Sound.BLOCK_BASALT_STEP, 15f, 1.5f);
   }
 
@@ -1216,6 +1250,9 @@ public class PlayerHockeyListener implements Listener {
     }
 
     String team = rink.getTeam(shooter);
+    if (team == null) {
+      return;
+    }
     if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
       return;
     }
@@ -1240,7 +1277,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
     Vector goalDirection = towardGoal.clone().normalize();
-    if (shotDirection.dot(goalDirection) < 0.93) {
+    if (shotDirection.dot(goalDirection) < 0.88) {
       return;
     }
 
@@ -1256,7 +1293,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       double projectedZ = puckLoc.getZ() + velocityZ * t;
-      if (Math.abs(projectedZ - target.getZ()) > 2.6) {
+      if (Math.abs(projectedZ - target.getZ()) > 2.9) {
         return;
       }
     } else {
@@ -1268,7 +1305,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       double projectedX = puckLoc.getX() + velocityX * t;
-      if (Math.abs(projectedX - target.getX()) > 2.6) {
+      if (Math.abs(projectedX - target.getX()) > 2.9) {
         return;
       }
     }
