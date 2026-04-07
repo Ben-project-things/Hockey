@@ -52,7 +52,9 @@ public abstract class AbstractGame implements Game {
   protected int intermissionTimeLeft;
   protected String intermissionLabel;
   protected boolean firstFaceoffTouchPending;
+  protected boolean faceoffCountdownActive;
   private Location lastPuckLocation;
+  private UUID mostRecentGoalScorerId;
 
   /**
    * Represents the constructor for an abstract game in which all games share these fields.
@@ -71,7 +73,9 @@ public abstract class AbstractGame implements Game {
     this.intermissionTimeLeft = 0;
     this.intermissionLabel = "Faceoff";
     this.firstFaceoffTouchPending = false;
+    this.faceoffCountdownActive = false;
     this.lastPuckLocation = null;
+    this.mostRecentGoalScorerId = null;
 
   }
 
@@ -85,6 +89,7 @@ public abstract class AbstractGame implements Game {
    * Starts a face off
    */
   protected void startFaceoff() {
+    this.faceoffCountdownActive = true;
     this.countdownTimer = new BukkitRunnable() {
       int secondsLeft = 5;
 
@@ -92,6 +97,7 @@ public abstract class AbstractGame implements Game {
       public void run() {
         if (secondsLeft <= 0) {
           summonPuck(rink.getCenterIce());
+          faceoffCountdownActive = false;
           firstFaceoffTouchPending = true;
           if (puck != null) {
             lastPuckLocation = puck.getLocation().clone();
@@ -233,6 +239,7 @@ public abstract class AbstractGame implements Game {
     this.puck.remove();
     this.puck = null;
     this.lastPuckLocation = null;
+    this.faceoffCountdownActive = false;
 
     Location goalLoc = scoringTeam.equalsIgnoreCase("home")
             ? this.rink.getAwayGoalCenter()
@@ -251,9 +258,12 @@ public abstract class AbstractGame implements Game {
     }
 
     if (gc.getScorer() != null && !gc.isOwnGoal()) {
+      this.mostRecentGoalScorerId = gc.getScorer().getUniqueId();
       GameStats scorerStats = getOrCreateStats(gc.getScorer());
       scorerStats.addGoal();
       scorerStats.addShotOnTarget();
+    } else {
+      this.mostRecentGoalScorerId = null;
     }
 
     if (gc.isOwnGoal()) {
@@ -396,6 +406,7 @@ public abstract class AbstractGame implements Game {
   @Override
   public void endGame() {
     this.rink.setToEndGame();
+    this.faceoffCountdownActive = false;
     if (this.countdownTimer != null) {
       this.countdownTimer.cancel();
       this.countdownTimer = null;
@@ -712,6 +723,7 @@ public abstract class AbstractGame implements Game {
   @Override
   public void whistleBlown() {
     this.gamePaused = true;
+    this.faceoffCountdownActive = false;
     if (this.countdownTimer != null) {
       this.countdownTimer.cancel();
       this.countdownTimer = null;
@@ -1036,4 +1048,25 @@ public abstract class AbstractGame implements Game {
    */
   @Override
   public abstract void summonPuck(Location location);
+
+  @Override
+  public Entity getActivePuck() {
+    if (this.puck == null || this.puck.isDead() || !this.puck.isValid()) {
+      return null;
+    }
+    return this.puck;
+  }
+
+  @Override
+  public Player getMostRecentGoalScorer() {
+    if (this.mostRecentGoalScorerId == null) {
+      return null;
+    }
+    return Bukkit.getPlayer(this.mostRecentGoalScorerId);
+  }
+
+  @Override
+  public boolean isFaceoffCountdownActive() {
+    return this.faceoffCountdownActive;
+  }
 }
