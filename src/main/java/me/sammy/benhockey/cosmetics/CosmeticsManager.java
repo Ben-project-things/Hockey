@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -37,6 +38,7 @@ public class CosmeticsManager {
   private final Map<UUID, StickType> playerStickTypes = new HashMap<>();
   private final Map<UUID, TrailParticle> playerParticles = new HashMap<>();
   private int rainbowTick = 0;
+  private int noteTick = 0;
 
   public CosmeticsManager(JavaPlugin plugin) {
     this.plugin = plugin;
@@ -113,8 +115,9 @@ public class CosmeticsManager {
 
     meta.addAttributeModifier(Attribute.GENERIC_ATTACK_SPEED, attackSpeedModifier);
     meta.setDisplayName(goalie ? GOALIE_STICK_NAME : HOCKEY_STICK_NAME);
+    meta.setUnbreakable(true);
     meta.addEnchant(Enchantment.KNOCKBACK, 1, true);
-    meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES);
+    meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE);
     hockeyStick.setItemMeta(meta);
     return hockeyStick;
   }
@@ -140,14 +143,33 @@ public class CosmeticsManager {
 
   public void spawnParticleFor(Player player, Location location) {
     TrailParticle selected = getParticle(player.getUniqueId());
+    if (selected == TrailParticle.NOTE) {
+      double noteColor = (this.noteTick % 24) / 24.0;
+      this.noteTick++;
+      player.spawnParticle(Particle.NOTE, location, 0, noteColor, 0, 0, 1.0);
+      return;
+    }
     if (selected == TrailParticle.RAINBOW) {
-      TrailParticle[] rainbow = {
-          TrailParticle.RED, TrailParticle.ORANGE, TrailParticle.YELLOW, TrailParticle.GREEN,
-          TrailParticle.BLUE, TrailParticle.INDIGO, TrailParticle.VIOLET
+      Particle.DustOptions[] rainbowDust = {
+          new Particle.DustOptions(Color.RED, 1.35f),
+          new Particle.DustOptions(Color.fromRGB(255, 127, 0), 1.35f),
+          new Particle.DustOptions(Color.YELLOW, 1.35f),
+          new Particle.DustOptions(Color.LIME, 1.35f),
+          new Particle.DustOptions(Color.AQUA, 1.35f),
+          new Particle.DustOptions(Color.BLUE, 1.35f),
+          new Particle.DustOptions(Color.fromRGB(143, 0, 255), 1.35f)
       };
-      selected = rainbow[(this.rainbowTick / 4) % rainbow.length];
+      Particle.DustOptions dust = rainbowDust[(this.rainbowTick / 3) % rainbowDust.length];
+      this.rainbowTick++;
+      player.spawnParticle(Particle.REDSTONE, location, 4, 0.08, 0.08, 0.08, 0.01, dust);
+      return;
     }
     this.rainbowTick++;
+    if (selected.dustOptions != null) {
+      player.spawnParticle(selected.particle, location, selected.count, selected.offsetX, selected.offsetY,
+              selected.offsetZ, selected.speed, selected.dustOptions);
+      return;
+    }
     if (selected.dataMaterial != null) {
       player.spawnParticle(selected.particle, location, selected.count, selected.offsetX, selected.offsetY,
               selected.offsetZ, selected.speed, Bukkit.createBlockData(selected.dataMaterial));
@@ -163,6 +185,7 @@ public class CosmeticsManager {
 
   public enum StickType {
     STICK("stick", Material.STICK, "Wooden Stick"),
+    BONE("bone", Material.BONE, "Bone Stick"),
     BLAZE_ROD("blazerod", Material.BLAZE_ROD, "Blaze Rod"),
     BAMBOO("bamboo", Material.BAMBOO, "Bamboo"),
     WOODEN_AXE("wooden_axe", Material.WOODEN_AXE, "Wooden Axe"),
@@ -219,7 +242,8 @@ public class CosmeticsManager {
     SLIME("slime", Particle.SLIME, Material.SLIME_BALL, "Slime", 1, 0, 0, 0, 0),
     LAVA("lava", Particle.DRIP_LAVA, Material.LAVA_BUCKET, "Lava", 5, 0, 0, 0, 0),
     CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", 1, 0, 0, 0, 0),
-    RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", 1, 0, 0, 0, 0),
+    RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.RED, 1.3f), null),
     GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", 2, 0.1, 0.1, 0.1, 0),
     ORANGE("orange", Particle.FLAME, Material.ORANGE_WOOL, "Orange", 2, 0, 0, 0, 0),
     YELLOW("yellow", Particle.END_ROD, Material.YELLOW_WOOL, "Yellow", 1, 0, 0, 0, 0),
@@ -236,16 +260,23 @@ public class CosmeticsManager {
     public final double offsetY;
     public final double offsetZ;
     public final double speed;
+    public final Particle.DustOptions dustOptions;
     public final Material dataMaterial;
 
     TrailParticle(String key, Particle particle, Material icon, String fancyName,
         int count, double offsetX, double offsetY, double offsetZ, double speed) {
-      this(key, particle, icon, fancyName, count, offsetX, offsetY, offsetZ, speed, null);
+      this(key, particle, icon, fancyName, count, offsetX, offsetY, offsetZ, speed, null, null);
     }
 
     TrailParticle(String key, Particle particle, Material icon, String fancyName,
                   int count, double offsetX, double offsetY, double offsetZ, double speed,
                   Material dataMaterial) {
+      this(key, particle, icon, fancyName, count, offsetX, offsetY, offsetZ, speed, null, dataMaterial);
+    }
+
+    TrailParticle(String key, Particle particle, Material icon, String fancyName,
+                  int count, double offsetX, double offsetY, double offsetZ, double speed,
+                  Particle.DustOptions dustOptions, Material dataMaterial) {
       this.key = key;
       this.particle = particle;
       this.icon = icon;
@@ -255,6 +286,7 @@ public class CosmeticsManager {
       this.offsetY = offsetY;
       this.offsetZ = offsetZ;
       this.speed = speed;
+      this.dustOptions = dustOptions;
       this.dataMaterial = dataMaterial;
     }
 

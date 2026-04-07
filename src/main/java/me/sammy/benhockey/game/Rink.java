@@ -48,6 +48,7 @@ public class Rink {
   private Game game;
   private GameState state;
   private GameScoreboard scoreboard;
+  private UUID spectatorFocusPlayerId;
   private final JavaPlugin plugin;
 
   private final Location centerIce;
@@ -84,6 +85,7 @@ public class Rink {
     this.plugin = plugin;
     this.state = GameState.PREGAME;
     this.scoreboard = new GameScoreboard(this);
+    this.spectatorFocusPlayerId = null;
   }
 
   /**
@@ -879,6 +881,7 @@ public class Rink {
       p.sendMessage("§6[§bBH§6] §cThere is no game to stop.");
     }
     else {
+      setSpectatorFocusPlayer(p);
       p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 50, -1);
       this.game.whistleBlown();
     }
@@ -916,6 +919,7 @@ public class Rink {
   public void givePenalty(Player commandSender, String type, String player, String reason,
                           String time) {
     if (this.state == GameState.GAME) {
+      setSpectatorFocusPlayer(commandSender);
       this.game.penalty(commandSender, type, player, reason, time);
     }
     else {
@@ -957,5 +961,17 @@ public class Rink {
     }
 
     this.game.forceGoal(scoringTeam);
+  }
+
+  public void setSpectatorFocusPlayer(Player player) {
+    this.spectatorFocusPlayerId = player == null ? null : player.getUniqueId();
+  }
+
+  public Player getSpectatorFocusPlayer() {
+    return this.spectatorFocusPlayerId == null ? null : this.plugin.getServer().getPlayer(this.spectatorFocusPlayerId);
+  }
+
+  public void clearSpectatorFocusPlayer() {
+    this.spectatorFocusPlayerId = null;
   }
 }

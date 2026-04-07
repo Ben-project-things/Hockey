@@ -1,6 +1,7 @@
 package me.sammy.benhockey.game;
 
 import org.bukkit.Location;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 /**
@@ -149,4 +150,22 @@ public interface Game {
    * @param scoringTeam is the team that should be credited with the goal ("home" or "away")
    */
   void forceGoal(String scoringTeam);
+
+  /**
+   * Gets the current active puck entity for this game.
+   * @return active puck, or null when no puck exists
+   */
+  Entity getActivePuck();
+
+  /**
+   * Gets the most recent goal scorer.
+   * @return scorer, or null if none is available
+   */
+  Player getMostRecentGoalScorer();
+
+  /**
+   * Returns whether the faceoff countdown title is currently running.
+   * @return true when the faceoff countdown is active
+   */
+  boolean isFaceoffCountdownActive();
 }

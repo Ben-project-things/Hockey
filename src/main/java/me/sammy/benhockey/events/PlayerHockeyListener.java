@@ -14,6 +14,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
 import org.bukkit.event.EventHandler;
@@ -30,6 +31,7 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
+import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -86,6 +88,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, UUID> recentGoalieBouncePlayer = new HashMap<>();
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
+  private final Map<String, ArmorStand> spectatorCamStands = new HashMap<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
@@ -126,6 +129,13 @@ public class PlayerHockeyListener implements Listener {
     player.removePotionEffect(PotionEffectType.POISON);
     player.removePotionEffect(PotionEffectType.SLOW);
     getCosmeticsManager().loadPlayer(playerId);
+  }
+
+  @EventHandler
+  public void onStickDurabilityLoss(PlayerItemDamageEvent e) {
+    if (isHockeyStick(e.getItem())) {
+      e.setCancelled(true);
+    }
   }
 
   @EventHandler
@@ -878,6 +888,139 @@ public class PlayerHockeyListener implements Listener {
     enforceGoalieHalfLineRule();
 
     updateGoaliePads();
+    updateSpectatorCameras();
+  }
+
+  private void updateSpectatorCameras() {
+    Set<String> activeRinks = new HashSet<>();
+    for (Rink rink : this.lobbyManager.getRinks()) {
+      activeRinks.add(rink.getName().toLowerCase());
+      updateSpectatorCameraForRink(rink);
+    }
+
+    for (String rinkName : new HashSet<>(this.spectatorCamStands.keySet())) {
+      if (activeRinks.contains(rinkName)) {
+        continue;
+      }
+      ArmorStand stand = this.spectatorCamStands.remove(rinkName);
+      if (stand != null && stand.isValid()) {
+        stand.remove();
+      }
+    }
+  }
+
+  private void updateSpectatorCameraForRink(Rink rink) {
+    ArmorStand camera = ensureSpectatorCamera(rink);
+    if (camera == null || !camera.isValid()) {
+      return;
+    }
+
+    Location cameraBase = getSpectatorCameraBaseLocation(rink);
+    Location focusTarget = getSpectatorFocusLocation(rink);
+    setYawPitchToward(cameraBase, focusTarget);
+    camera.teleport(cameraBase);
+
+    for (Player player : rink.getAllPlayers()) {
+      if (player.getGameMode() == GameMode.SPECTATOR) {
+        player.setSpectatorTarget(camera);
+      }
+    }
+  }
+
+  private ArmorStand ensureSpectatorCamera(Rink rink) {
+    String key = rink.getName().toLowerCase();
+    ArmorStand existing = this.spectatorCamStands.get(key);
+    if (existing != null && existing.isValid()) {
+      return existing;
+    }
+
+    Location spawn = getSpectatorCameraBaseLocation(rink);
+    if (spawn.getWorld() == null) {
+      return null;
+    }
+    ArmorStand stand = spawn.getWorld().spawn(spawn, ArmorStand.class, armorStand -> {
+      armorStand.setInvisible(true);
+      armorStand.setGravity(false);
+      armorStand.setMarker(true);
+      armorStand.setSmall(true);
+      armorStand.setBasePlate(false);
+      armorStand.setArms(false);
+      armorStand.setSilent(true);
+      armorStand.setInvulnerable(true);
+      armorStand.setCollidable(false);
+      armorStand.setPersistent(true);
+    });
+    this.spectatorCamStands.put(key, stand);
+    return stand;
+  }
+
+  private Location getSpectatorCameraBaseLocation(Rink rink) {
+    Location center = rink.getCenterIce().clone();
+    Location homeBench = rink.getHomeBench();
+    Location awayBench = rink.getAwayBench();
+    Vector towardBench = homeBench.toVector().add(awayBench.toVector()).multiply(0.5).subtract(center.toVector()).setY(0);
+    if (towardBench.lengthSquared() < 0.0001) {
+      towardBench = rink.getHomeGoalCenter().toVector().subtract(rink.getAwayGoalCenter().toVector()).setY(0);
+    }
+    if (towardBench.lengthSquared() < 0.0001) {
+      towardBench = new Vector(1, 0, 0);
+    }
+    towardBench.normalize();
+    return center.add(towardBench.multiply(16)).add(0, 9, 0);
+  }
+
+  private Location getSpectatorFocusLocation(Rink rink) {
+    Location centerFocus = rink.getCenterIce().clone().add(0, 1.1, 0);
+    if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
+      return centerFocus;
+    }
+
+    if (rink.getGame().isFaceoffCountdownActive()) {
+      rink.clearSpectatorFocusPlayer();
+      return centerFocus;
+    }
+
+    int intermissionLeft = rink.getGame().getIntermissionTimeLeft();
+    String intermissionLabel = rink.getGame().getIntermissionLabel();
+    if (intermissionLeft > 0) {
+      if ("Faceoff".equalsIgnoreCase(intermissionLabel)) {
+        Player scorer = rink.getGame().getMostRecentGoalScorer();
+        if (scorer != null && scorer.isOnline()) {
+          return scorer.getEyeLocation();
+        }
+      }
+      return centerFocus;
+    }
+
+    Player manualFocus = rink.getSpectatorFocusPlayer();
+    if (manualFocus != null && manualFocus.isOnline()) {
+      return manualFocus.getEyeLocation();
+    }
+
+    for (UUID goalieId : this.glovedGoalies) {
+      Player goalie = Bukkit.getPlayer(goalieId);
+      if (goalie != null && goalie.isOnline() && rink.equals(this.lobbyManager.getPlayerRink(goalie))) {
+        return goalie.getEyeLocation();
+      }
+    }
+
+    Entity puck = rink.getGame().getActivePuck();
+    if (puck != null && puck.isValid()) {
+      return puck.getLocation().clone().add(0, 0.3, 0);
+    }
+
+    return centerFocus;
+  }
+
+  private void setYawPitchToward(Location origin, Location target) {
+    if (origin.getWorld() == null || target == null) {
+      return;
+    }
+    Vector direction = target.toVector().subtract(origin.toVector());
+    if (direction.lengthSquared() < 0.0001) {
+      return;
+    }
+    origin.setDirection(direction.normalize());
   }
 
   private void updatePossessionIndicators() {
