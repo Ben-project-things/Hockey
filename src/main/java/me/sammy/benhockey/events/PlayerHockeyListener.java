@@ -67,9 +67,9 @@ public class PlayerHockeyListener implements Listener {
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
   private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.82;
   private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.58;
-  private static final double SHIFT_LIFT_Y_HARD_CAP = 0.62;
-  private static final double SHIFT_LIFT_BASE_Y = 0.52;
-  private static final double SHIFT_LIFT_SCALE_Y = 0.30;
+  private static final double SHIFT_LIFT_Y_HARD_CAP = 0.70;
+  private static final double SHIFT_LIFT_BASE_Y = 0.58;
+  private static final double SHIFT_LIFT_SCALE_Y = 0.34;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private final LobbyManager lobbyManager;
   private HashMap<UUID, Double> charges = new HashMap();
@@ -931,8 +931,8 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    double bounceY = Math.min(0.32, 0.10 + (fallDamage * 0.05));
-    if (bounceY < 0.08) {
+    double bounceY = Math.min(0.44, 0.14 + (fallDamage * 0.07));
+    if (bounceY < 0.12) {
       return;
     }
 
