@@ -445,9 +445,12 @@ public class Rink {
     int crossX = useXAxis ? 0 : 1;
     int crossZ = useXAxis ? 1 : 0;
 
-    for (int i = -2; i <= 2; i++) {
-      Location zoneBlock = base.clone().add(crossX * i, 0, crossZ * i).getBlock().getLocation();
-      goalZone.add(zoneBlock);
+    for (int depth = 0; depth < 2; depth++) {
+      Location depthBase = base.clone().add(forwardX * depth, 0, forwardZ * depth);
+      for (int i = -2; i <= 2; i++) {
+        Location zoneBlock = depthBase.clone().add(crossX * i, 0, crossZ * i).getBlock().getLocation();
+        goalZone.add(zoneBlock);
+      }
     }
 
     return goalZone;

@@ -188,9 +188,11 @@ public abstract class AbstractGame implements Game {
    */
   protected void endPeriod() {
     for (Player p : rink.getAllPlayers()) {
-      p.sendTitle("§b§lEnd of Period " + period,
-              "§6Score: §c" + homeScore + " §7- §9" + awayScore,
-              10, 20, 10);
+      sendStagedTitle(
+              p,
+              "§b§lEnd of Period " + period,
+              "§6Score: §c" + homeScore + " §7- §9" + awayScore
+      );
       p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
     }
 
@@ -249,7 +251,9 @@ public abstract class AbstractGame implements Game {
     }
 
     if (gc.getScorer() != null && !gc.isOwnGoal()) {
-      getOrCreateStats(gc.getScorer()).addGoal();
+      GameStats scorerStats = getOrCreateStats(gc.getScorer());
+      scorerStats.addGoal();
+      scorerStats.addShotOnTarget();
     }
 
     if (gc.isOwnGoal()) {
@@ -306,8 +310,7 @@ public abstract class AbstractGame implements Game {
     }
 
     for (Player p : this.rink.getAllPlayers()) {
-      p.sendTitle(title, subtitle, 10,
-              40, 10);
+      sendStagedTitle(p, title, subtitle);
       p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
     }
 
@@ -434,12 +437,10 @@ public abstract class AbstractGame implements Game {
     }
 
     for (Player p : rink.getAllPlayers()) {
-      p.sendTitle(
+      sendStagedTitle(
+              p,
               winnerTitle,
-              "§6Final Score: §c" + homeScore + " §7- §9" + awayScore,
-              10,
-              40,
-              10
+              "§6Final Score: §c" + homeScore + " §7- §9" + awayScore
       );
       p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
       p.sendMessage("§6[§bBH§6] §6Final Score: §c" + homeScore + " §7- §9" + awayScore);
@@ -765,10 +766,11 @@ public abstract class AbstractGame implements Game {
           onlinePlayer.teleport(rink.getPenaltyBox());
         }
         for (Player p : rink.getAllPlayers()) {
-          p.sendTitle("§6§lPenalty: §e§l" + reason,
-                  "§7Player: " + colorizePenaltyPlayerName(playerName) + "§8 | §7Time: §f" + timeStr +
-                          "s",
-                  10, 40, 10);
+          sendStagedTitle(
+                  p,
+                  "§6§lPenalty: §e§l" + reason,
+                  "§7Player: " + colorizePenaltyPlayerName(playerName) + "§8 | §7Time: §f" + timeStr + "s"
+          );
         }
         break;
 
@@ -896,19 +898,6 @@ public abstract class AbstractGame implements Game {
       maxGoalZ = Math.max(maxGoalZ, blockLoc.getBlockZ() + 1.0);
     }
 
-    Vector outward = goal.toVector().subtract(this.rink.getCenterIce().toVector()).setY(0);
-    if (Math.abs(outward.getX()) >= Math.abs(outward.getZ())) {
-      if (outward.getX() >= 0) {
-        maxGoalX += 1.0;
-      } else {
-        minGoalX -= 1.0;
-      }
-    } else if (outward.getZ() >= 0) {
-      maxGoalZ += 1.0;
-    } else {
-      minGoalZ -= 1.0;
-    }
-
     BoundingBox puckBox = puckEntity.getBoundingBox();
     return puckBox.getMinX() >= minGoalX
             && puckBox.getMaxX() <= maxGoalX
@@ -1003,6 +992,15 @@ public abstract class AbstractGame implements Game {
       player.setFallDistance(0f);
       player.setVelocity(velocity);
     }
+  }
+
+  private void sendStagedTitle(Player player, String title, String subtitle) {
+    player.sendTitle(title, "", 10, 200, 10);
+    Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+      if (player.isOnline()) {
+        player.sendTitle(title, subtitle, 10, 100, 10);
+      }
+    }, 40L);
   }
 
   private String buildGoalSubtitle(String teamColor, GoalContribution gc) {
