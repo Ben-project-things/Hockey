@@ -188,7 +188,7 @@ public abstract class AbstractGame implements Game {
    */
   protected void endPeriod() {
     for (Player p : rink.getAllPlayers()) {
-      p.sendTitle("§bEnd of Period " + period,
+      p.sendTitle("§b§lEnd of Period " + period,
               "§6Score: §c" + homeScore + " §7- §9" + awayScore,
               10, 20, 10);
       p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -298,10 +298,10 @@ public abstract class AbstractGame implements Game {
           scorerColor = "9";
         }
       }
-      title = "§" + teamColor + scoringTeamName + " GOAL";
-      subtitle = "§7Scored by: §" + scorerColor + scorerName + " §8(Own Goal)";
+      title = "§" + teamColor + "§l" + scoringTeamName + " GOAL";
+      subtitle = "§7Scored by: §" + scorerColor + scorerName + " §8(§7Own Goal§8)";
     } else {
-      title = "§" + teamColor + scoringTeamName + " GOAL";
+      title = "§" + teamColor + "§l" + scoringTeamName + " GOAL";
       subtitle = buildGoalSubtitle(teamColor, gc);
     }
 
@@ -426,11 +426,11 @@ public abstract class AbstractGame implements Game {
 
     String winnerTitle;
     if (homeScore > awayScore) {
-      winnerTitle = "§c" + rink.getHomeTeamName() + " Wins";
+      winnerTitle = "§c§l" + rink.getHomeTeamName() + " Wins";
     } else if (awayScore > homeScore) {
-      winnerTitle = "§9" + rink.getAwayTeamName() + " Wins";
+      winnerTitle = "§9§l" + rink.getAwayTeamName() + " Wins";
     } else {
-      winnerTitle = "§eTie Game";
+      winnerTitle = "§e§lTie Game";
     }
 
     for (Player p : rink.getAllPlayers()) {
@@ -1029,7 +1029,7 @@ public abstract class AbstractGame implements Game {
     if (statValue <= 1) {
       return player.getName();
     }
-    return player.getName() + " §8(" + statValue + ")";
+    return player.getName() + " §8(§7" + statValue + "§8)";
   }
 
   /**
