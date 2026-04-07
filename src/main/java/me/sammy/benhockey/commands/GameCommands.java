@@ -7,6 +7,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.Set;
+
+import me.sammy.benhockey.BenHockey;
 import java.util.stream.Collectors;
 
 import me.sammy.benhockey.game.GameState;
@@ -386,6 +388,12 @@ public class GameCommands implements CommandExecutor {
           }
           return true;
 
+
+        case "cosmetic":
+        case "cosmetics":
+          ((BenHockey) this.lobbyManager.getPlugin()).getCosmeticsMenuListener().openMainMenu(player);
+          return true;
+
         case "help":
           displayHelp(player);
           return true;
@@ -413,6 +421,7 @@ public class GameCommands implements CommandExecutor {
     player.sendMessage("§a/puck §7- Spawns a personal puck.");
     player.sendMessage("§a/leave §7- Return to lobby.");
     player.sendMessage("§a/bench §7- Teleport to your team's bench.");
+    player.sendMessage("§a/cosmetics §7- Open the cosmetics menu.");
 
     if (player.isOp()) {
       player.sendMessage("§6[§bBH§6] §cOperator Commands:");

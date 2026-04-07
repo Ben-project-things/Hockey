@@ -1,0 +1,272 @@
+package me.sammy.benhockey.cosmetics;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.plugin.java.JavaPlugin;
+
+/**
+ * Handles player cosmetic persistence and creation.
+ */
+public class CosmeticsManager {
+
+  private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
+  private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
+
+  private final JavaPlugin plugin;
+  private final File cosmeticsFile;
+  private final YamlConfiguration cosmeticsConfig;
+  private final Map<UUID, StickType> playerStickTypes = new HashMap<>();
+  private final Map<UUID, TrailParticle> playerParticles = new HashMap<>();
+  private int rainbowTick = 0;
+
+  public CosmeticsManager(JavaPlugin plugin) {
+    this.plugin = plugin;
+    if (!plugin.getDataFolder().exists()) {
+      plugin.getDataFolder().mkdirs();
+    }
+    this.cosmeticsFile = new File(plugin.getDataFolder(), "cosmetics.yml");
+    this.cosmeticsConfig = YamlConfiguration.loadConfiguration(this.cosmeticsFile);
+  }
+
+  public void loadPlayer(UUID playerId) {
+    String base = "players." + playerId;
+    this.playerStickTypes.put(playerId, StickType.fromKey(this.cosmeticsConfig.getString(base + ".stick", StickType.STICK.key)));
+    this.playerParticles.put(playerId,
+            TrailParticle.fromKey(this.cosmeticsConfig.getString(base + ".particle", TrailParticle.EMERALD.key)));
+  }
+
+  public void saveAll() {
+    for (UUID playerId : this.playerStickTypes.keySet()) {
+      savePlayer(playerId);
+    }
+    try {
+      this.cosmeticsConfig.save(this.cosmeticsFile);
+    } catch (IOException e) {
+      this.plugin.getLogger().warning("Failed to save cosmetics.yml: " + e.getMessage());
+    }
+  }
+
+  private void savePlayer(UUID playerId) {
+    String base = "players." + playerId;
+    this.cosmeticsConfig.set(base + ".stick", getStickType(playerId).key);
+    this.cosmeticsConfig.set(base + ".particle", getParticle(playerId).key);
+  }
+
+  public StickType getStickType(UUID playerId) {
+    return this.playerStickTypes.getOrDefault(playerId, StickType.STICK);
+  }
+
+  public TrailParticle getParticle(UUID playerId) {
+    return this.playerParticles.getOrDefault(playerId, TrailParticle.EMERALD);
+  }
+
+  public void setStickType(Player player, StickType type) {
+    this.playerStickTypes.put(player.getUniqueId(), type);
+    savePlayer(player.getUniqueId());
+    saveAll();
+  }
+
+  public void setParticle(Player player, TrailParticle particle) {
+    this.playerParticles.put(player.getUniqueId(), particle);
+    savePlayer(player.getUniqueId());
+    saveAll();
+  }
+
+  public ItemStack createStickItem(Player player, boolean goalie) {
+    StickType stickType = getStickType(player.getUniqueId());
+    return createStickItem(stickType, goalie);
+  }
+
+  public ItemStack createStickItem(StickType stickType, boolean goalie) {
+    ItemStack hockeyStick = new ItemStack(stickType.material);
+    ItemMeta meta = hockeyStick.getItemMeta();
+    if (meta == null) {
+      return hockeyStick;
+    }
+
+    AttributeModifier attackSpeedModifier = new AttributeModifier(
+            UUID.randomUUID(),
+            "generic_attack_speed",
+            2.5,
+            AttributeModifier.Operation.ADD_NUMBER,
+            EquipmentSlot.HAND
+    );
+
+    meta.addAttributeModifier(Attribute.GENERIC_ATTACK_SPEED, attackSpeedModifier);
+    meta.setDisplayName(goalie ? GOALIE_STICK_NAME : HOCKEY_STICK_NAME);
+    meta.addEnchant(Enchantment.KNOCKBACK, 1, true);
+    meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES);
+    hockeyStick.setItemMeta(meta);
+    return hockeyStick;
+  }
+
+
+  public void refreshPlayerSticks(Player player) {
+    for (int i = 0; i < player.getInventory().getSize(); i++) {
+      ItemStack current = player.getInventory().getItem(i);
+      if (current == null || !isValidStickMaterial(current.getType()) || !current.hasItemMeta()) {
+        continue;
+      }
+      ItemMeta meta = current.getItemMeta();
+      if (meta == null || !meta.hasDisplayName()) {
+        continue;
+      }
+      if (GOALIE_STICK_NAME.equals(meta.getDisplayName())) {
+        player.getInventory().setItem(i, createStickItem(player, true));
+      } else if (HOCKEY_STICK_NAME.equals(meta.getDisplayName())) {
+        player.getInventory().setItem(i, createStickItem(player, false));
+      }
+    }
+  }
+
+  public void spawnParticleFor(Player player, Location location) {
+    TrailParticle selected = getParticle(player.getUniqueId());
+    if (selected == TrailParticle.RAINBOW) {
+      TrailParticle[] rainbow = {
+          TrailParticle.RED, TrailParticle.ORANGE, TrailParticle.YELLOW, TrailParticle.GREEN,
+          TrailParticle.BLUE, TrailParticle.INDIGO, TrailParticle.VIOLET
+      };
+      selected = rainbow[(this.rainbowTick / 4) % rainbow.length];
+    }
+    this.rainbowTick++;
+    if (selected.dataMaterial != null) {
+      player.spawnParticle(selected.particle, location, selected.count, selected.offsetX, selected.offsetY,
+              selected.offsetZ, selected.speed, Bukkit.createBlockData(selected.dataMaterial));
+      return;
+    }
+    player.spawnParticle(selected.particle, location, selected.count, selected.offsetX, selected.offsetY,
+            selected.offsetZ, selected.speed);
+  }
+
+  public static boolean isValidStickMaterial(Material material) {
+    return StickType.MATERIALS.contains(material);
+  }
+
+  public enum StickType {
+    STICK("stick", Material.STICK, "Wooden Stick"),
+    BLAZE_ROD("blazerod", Material.BLAZE_ROD, "Blaze Rod"),
+    BAMBOO("bamboo", Material.BAMBOO, "Bamboo"),
+    WOODEN_AXE("wooden_axe", Material.WOODEN_AXE, "Wooden Axe"),
+    STONE_AXE("stone_axe", Material.STONE_AXE, "Stone Axe"),
+    IRON_AXE("iron_axe", Material.IRON_AXE, "Iron Axe"),
+    GOLDEN_AXE("golden_axe", Material.GOLDEN_AXE, "Golden Axe"),
+    DIAMOND_AXE("diamond_axe", Material.DIAMOND_AXE, "Diamond Axe"),
+    NETHERITE_AXE("netherite_axe", Material.NETHERITE_AXE, "Netherite Axe"),
+    WOODEN_HOE("wooden_hoe", Material.WOODEN_HOE, "Wooden Hoe"),
+    STONE_HOE("stone_hoe", Material.STONE_HOE, "Stone Hoe"),
+    IRON_HOE("iron_hoe", Material.IRON_HOE, "Iron Hoe"),
+    GOLDEN_HOE("golden_hoe", Material.GOLDEN_HOE, "Golden Hoe"),
+    DIAMOND_HOE("diamond_hoe", Material.DIAMOND_HOE, "Diamond Hoe"),
+    NETHERITE_HOE("netherite_hoe", Material.NETHERITE_HOE, "Netherite Hoe");
+
+    private static final EnumSet<Material> MATERIALS = EnumSet.noneOf(Material.class);
+
+    static {
+      Arrays.stream(values()).forEach(value -> MATERIALS.add(value.material));
+    }
+
+    public final String key;
+    public final Material material;
+    public final String fancy;
+
+    StickType(String key, Material material, String fancy) {
+      this.key = key;
+      this.material = material;
+      this.fancy = fancy;
+    }
+
+    public static StickType fromKey(String key) {
+      for (StickType type : values()) {
+        if (type.key.equalsIgnoreCase(key)) {
+          return type;
+        }
+      }
+      return STICK;
+    }
+  }
+
+  public enum TrailParticle {
+    INSTANT("instantspell", Particle.INSTANT_EFFECT, Material.FIREWORK_ROCKET, "Default Particle", "fcparticle.normal", 1, 0, 0, 0, 0),
+    FLAME("flame", Particle.FLAME, Material.FLINT_AND_STEEL, "Flame", "fcparticle.flame", 2, 0, 0, 0, 0),
+    CRIT("crit", Particle.CRIT, Material.GOLDEN_SWORD, "Crit", "fcparticle.crit", 5, 0, 0, 0, 0),
+    BLUE_CRIT("bluecrit", Particle.CRIT_MAGIC, Material.DIAMOND_SWORD, "Blue Crit", "fcparticle.bluecrit", 5, 0, 0, 0, 0),
+    EMERALD("emerald", Particle.VILLAGER_HAPPY, Material.EMERALD, "Emerald", "fcparticle.emerald", 5, 0, 0, 0, 0),
+    SNOW("snow", Particle.SNOWBALL, Material.SNOWBALL, "Snow", "fcparticle.snow", 5, 0, 0, 0, 0),
+    NOTE("note", Particle.NOTE, Material.JUKEBOX, "Note", "fcparticle.note", 1, 0, 0, 0, 0),
+    PURPLE("purple", Particle.SPELL_WITCH, Material.PURPLE_STAINED_GLASS, "Purple", "fcparticle.purple", 5, 0, 0, 0, 0),
+    RAINBOW("rainbow", Particle.DUST, Material.BEACON, "Rainbow", "fcparticle.rainbow", 5, 0, 0, 0, 0),
+    HEART("heart", Particle.HEART, Material.APPLE, "Heart", "fcparticle.heart", 1, 0, 0, 0, 0),
+    SPLASH("splash", Particle.SPLASH, Material.WATER_BUCKET, "Splash", "fcparticle.splash", 5, 0, 0, 0, 0),
+    SLIME("slime", Particle.SLIME, Material.SLIME_BALL, "Slime", "fcparticle.slime", 1, 0, 0, 0, 0),
+    LAVA("lava", Particle.LAVA, Material.LAVA_BUCKET, "Lava", "fcparticle.lava", 5, 0, 0, 0, 0),
+    CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", "fcparticle.cloud", 1, 0, 0, 0, 0),
+    RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", "fcparticle.red", 1, 0, 0, 0, 0),
+    GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", "fcparticle.green", 2, 0.1, 0.1, 0.1, 0),
+    ORANGE("orange", Particle.FLAME, Material.ORANGE_WOOL, "Orange", "fcparticle.orange", 2, 0, 0, 0, 0),
+    YELLOW("yellow", Particle.END_ROD, Material.YELLOW_WOOL, "Yellow", "fcparticle.yellow", 1, 0, 0, 0, 0),
+    BLUE("blue", Particle.WATER_SPLASH, Material.BLUE_WOOL, "Blue", "fcparticle.blue", 2, 0.1, 0.1, 0.1, 0),
+    INDIGO("indigo", Particle.DRAGON_BREATH, Material.PURPLE_WOOL, "Indigo", "fcparticle.indigo", 1, 0, 0, 0, 0),
+    VIOLET("violet", Particle.ENCHANTMENT_TABLE, Material.MAGENTA_WOOL, "Violet", "fcparticle.violet", 3, 0.1, 0.1, 0.1, 0);
+
+    public final String key;
+    public final Particle particle;
+    public final Material icon;
+    public final String fancyName;
+    public final String permission;
+    public final int count;
+    public final double offsetX;
+    public final double offsetY;
+    public final double offsetZ;
+    public final double speed;
+    public final Material dataMaterial;
+
+    TrailParticle(String key, Particle particle, Material icon, String fancyName, String permission,
+        int count, double offsetX, double offsetY, double offsetZ, double speed) {
+      this(key, particle, icon, fancyName, permission, count, offsetX, offsetY, offsetZ, speed, null);
+    }
+
+    TrailParticle(String key, Particle particle, Material icon, String fancyName, String permission,
+                  int count, double offsetX, double offsetY, double offsetZ, double speed,
+                  Material dataMaterial) {
+      this.key = key;
+      this.particle = particle;
+      this.icon = icon;
+      this.fancyName = fancyName;
+      this.permission = permission;
+      this.count = count;
+      this.offsetX = offsetX;
+      this.offsetY = offsetY;
+      this.offsetZ = offsetZ;
+      this.speed = speed;
+      this.dataMaterial = dataMaterial;
+    }
+
+    public static TrailParticle fromKey(String key) {
+      for (TrailParticle value : values()) {
+        if (value.key.equalsIgnoreCase(key)) {
+          return value;
+        }
+      }
+      return EMERALD;
+    }
+  }
+}
