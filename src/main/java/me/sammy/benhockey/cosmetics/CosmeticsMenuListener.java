@@ -1,6 +1,7 @@
 package me.sammy.benhockey.cosmetics;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.bukkit.Bukkit;
@@ -34,9 +35,9 @@ public class CosmeticsMenuListener implements Listener {
     Inventory inv = Bukkit.createInventory(null, 27, MAIN_TITLE);
     fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
     inv.setItem(11, makeItem(Material.STICK, "&b&lHockey Sticks",
-            List.of("&7Customize your base stick."), true));
+            list("&7Customize your base stick."), true));
     inv.setItem(15, makeItem(Material.COMPASS, "&a&lParticle Selector",
-            List.of("&7Choose your puck particle."), true));
+            list("&7Choose your puck particle."), true));
     player.openInventory(inv);
   }
 
@@ -47,12 +48,12 @@ public class CosmeticsMenuListener implements Listener {
 
     int slot = 0;
     for (CosmeticsManager.StickType type : CosmeticsManager.StickType.values()) {
-      inv.setItem(slot++, makeItem(type.material, "&b" + type.fancy, List.of("&7Click to equip"), false));
+      inv.setItem(slot++, makeItem(type.material, "&b" + type.fancy, list("&7Click to equip"), false));
     }
 
     CosmeticsManager.StickType selected = this.cosmeticsManager.getStickType(player.getUniqueId());
     inv.setItem(49, makeItem(selected.material, "&aCurrent: &f" + selected.fancy,
-            List.of("&7Your selected hockey stick."), true));
+            list("&7Your selected hockey stick."), true));
 
     player.openInventory(inv);
   }
@@ -69,13 +70,13 @@ public class CosmeticsMenuListener implements Listener {
       }
       List<String> lore = new ArrayList<>();
       lore.add("&7Click to equip.");
-      lore.add(player.hasPermission(particle.permission) ? "&aUnlocked" : "&cNo permission: " + particle.permission);
+      lore.add("&aUnlocked");
       inv.setItem(slot++, makeItem(particle.icon, "&a" + particle.fancyName, lore, false));
     }
 
     CosmeticsManager.TrailParticle selected = this.cosmeticsManager.getParticle(player.getUniqueId());
     inv.setItem(49, makeItem(selected.icon, "&aCurrent: &f" + selected.fancyName,
-            List.of("&7Your selected puck particle."), true));
+            list("&7Your selected puck particle."), true));
 
     player.openInventory(inv);
   }
@@ -121,12 +122,6 @@ public class CosmeticsMenuListener implements Listener {
 
     if (slot < CosmeticsManager.TrailParticle.values().length && slot < 45) {
       CosmeticsManager.TrailParticle selected = CosmeticsManager.TrailParticle.values()[slot];
-      if (!player.hasPermission(selected.permission)) {
-        player.sendMessage("§6[§bBH§6] §cYou do not have permission: §7" + selected.permission);
-        player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-        return;
-      }
-
       this.cosmeticsManager.setParticle(player, selected);
       player.sendMessage("§6[§bBH§6] §aSelected particle: §f" + selected.fancyName);
       player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
@@ -134,16 +129,20 @@ public class CosmeticsMenuListener implements Listener {
     }
   }
 
+  private List<String> list(String... values) {
+    return new ArrayList<String>(Arrays.asList(values));
+  }
+
   private void fill(Inventory inv, Material material, String name) {
     for (int i = 0; i < inv.getSize(); i++) {
-      inv.setItem(i, makeItem(material, name, List.of(), false));
+      inv.setItem(i, makeItem(material, name, list(), false));
     }
   }
 
   private void fillRow(Inventory inv, int row, Material material, String name) {
     int start = row * 9;
     for (int i = start; i < start + 9; i++) {
-      inv.setItem(i, makeItem(material, name, List.of(), false));
+      inv.setItem(i, makeItem(material, name, list(), false));
     }
   }
 

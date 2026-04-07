@@ -205,33 +205,32 @@ public class CosmeticsManager {
   }
 
   public enum TrailParticle {
-    INSTANT("instantspell", Particle.INSTANT_EFFECT, Material.FIREWORK_ROCKET, "Default Particle", "fcparticle.normal", 1, 0, 0, 0, 0),
-    FLAME("flame", Particle.FLAME, Material.FLINT_AND_STEEL, "Flame", "fcparticle.flame", 2, 0, 0, 0, 0),
-    CRIT("crit", Particle.CRIT, Material.GOLDEN_SWORD, "Crit", "fcparticle.crit", 5, 0, 0, 0, 0),
-    BLUE_CRIT("bluecrit", Particle.CRIT_MAGIC, Material.DIAMOND_SWORD, "Blue Crit", "fcparticle.bluecrit", 5, 0, 0, 0, 0),
-    EMERALD("emerald", Particle.VILLAGER_HAPPY, Material.EMERALD, "Emerald", "fcparticle.emerald", 5, 0, 0, 0, 0),
-    SNOW("snow", Particle.SNOWBALL, Material.SNOWBALL, "Snow", "fcparticle.snow", 5, 0, 0, 0, 0),
-    NOTE("note", Particle.NOTE, Material.JUKEBOX, "Note", "fcparticle.note", 1, 0, 0, 0, 0),
-    PURPLE("purple", Particle.SPELL_WITCH, Material.PURPLE_STAINED_GLASS, "Purple", "fcparticle.purple", 5, 0, 0, 0, 0),
-    RAINBOW("rainbow", Particle.DUST, Material.BEACON, "Rainbow", "fcparticle.rainbow", 5, 0, 0, 0, 0),
-    HEART("heart", Particle.HEART, Material.APPLE, "Heart", "fcparticle.heart", 1, 0, 0, 0, 0),
-    SPLASH("splash", Particle.SPLASH, Material.WATER_BUCKET, "Splash", "fcparticle.splash", 5, 0, 0, 0, 0),
-    SLIME("slime", Particle.SLIME, Material.SLIME_BALL, "Slime", "fcparticle.slime", 1, 0, 0, 0, 0),
-    LAVA("lava", Particle.LAVA, Material.LAVA_BUCKET, "Lava", "fcparticle.lava", 5, 0, 0, 0, 0),
-    CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", "fcparticle.cloud", 1, 0, 0, 0, 0),
-    RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", "fcparticle.red", 1, 0, 0, 0, 0),
-    GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", "fcparticle.green", 2, 0.1, 0.1, 0.1, 0),
-    ORANGE("orange", Particle.FLAME, Material.ORANGE_WOOL, "Orange", "fcparticle.orange", 2, 0, 0, 0, 0),
-    YELLOW("yellow", Particle.END_ROD, Material.YELLOW_WOOL, "Yellow", "fcparticle.yellow", 1, 0, 0, 0, 0),
-    BLUE("blue", Particle.WATER_SPLASH, Material.BLUE_WOOL, "Blue", "fcparticle.blue", 2, 0.1, 0.1, 0.1, 0),
-    INDIGO("indigo", Particle.DRAGON_BREATH, Material.PURPLE_WOOL, "Indigo", "fcparticle.indigo", 1, 0, 0, 0, 0),
-    VIOLET("violet", Particle.ENCHANTMENT_TABLE, Material.MAGENTA_WOOL, "Violet", "fcparticle.violet", 3, 0.1, 0.1, 0.1, 0);
+    INSTANT("instantspell", Particle.SPELL_INSTANT, Material.FIREWORK_ROCKET, "Default Particle", 1, 0, 0, 0, 0),
+    FLAME("flame", Particle.FLAME, Material.FLINT_AND_STEEL, "Flame", 2, 0, 0, 0, 0),
+    CRIT("crit", Particle.CRIT, Material.GOLDEN_SWORD, "Crit", 5, 0, 0, 0, 0),
+    BLUE_CRIT("bluecrit", Particle.CRIT_MAGIC, Material.DIAMOND_SWORD, "Blue Crit", 5, 0, 0, 0, 0),
+    EMERALD("emerald", Particle.VILLAGER_HAPPY, Material.EMERALD, "Emerald", 5, 0, 0, 0, 0),
+    SNOW("snow", Particle.SNOWBALL, Material.SNOWBALL, "Snow", 5, 0, 0, 0, 0),
+    NOTE("note", Particle.NOTE, Material.JUKEBOX, "Note", 1, 0, 0, 0, 0),
+    PURPLE("purple", Particle.SPELL_WITCH, Material.PURPLE_STAINED_GLASS, "Purple", 5, 0, 0, 0, 0),
+    RAINBOW("rainbow", Particle.REDSTONE, Material.BEACON, "Rainbow", 5, 0, 0, 0, 0),
+    HEART("heart", Particle.HEART, Material.APPLE, "Heart", 1, 0, 0, 0, 0),
+    SPLASH("splash", Particle.WATER_SPLASH, Material.WATER_BUCKET, "Splash", 5, 0, 0, 0, 0),
+    SLIME("slime", Particle.SLIME, Material.SLIME_BALL, "Slime", 1, 0, 0, 0, 0),
+    LAVA("lava", Particle.LAVA, Material.LAVA_BUCKET, "Lava", 5, 0, 0, 0, 0),
+    CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", 1, 0, 0, 0, 0),
+    RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", 1, 0, 0, 0, 0),
+    GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", 2, 0.1, 0.1, 0.1, 0),
+    ORANGE("orange", Particle.FLAME, Material.ORANGE_WOOL, "Orange", 2, 0, 0, 0, 0),
+    YELLOW("yellow", Particle.END_ROD, Material.YELLOW_WOOL, "Yellow", 1, 0, 0, 0, 0),
+    BLUE("blue", Particle.WATER_SPLASH, Material.BLUE_WOOL, "Blue", 2, 0.1, 0.1, 0.1, 0),
+    INDIGO("indigo", Particle.DRAGON_BREATH, Material.PURPLE_WOOL, "Indigo", 1, 0, 0, 0, 0),
+    VIOLET("violet", Particle.ENCHANTMENT_TABLE, Material.MAGENTA_WOOL, "Violet", 3, 0.1, 0.1, 0.1, 0);
 
     public final String key;
     public final Particle particle;
     public final Material icon;
     public final String fancyName;
-    public final String permission;
     public final int count;
     public final double offsetX;
     public final double offsetY;
@@ -239,19 +238,18 @@ public class CosmeticsManager {
     public final double speed;
     public final Material dataMaterial;
 
-    TrailParticle(String key, Particle particle, Material icon, String fancyName, String permission,
+    TrailParticle(String key, Particle particle, Material icon, String fancyName,
         int count, double offsetX, double offsetY, double offsetZ, double speed) {
-      this(key, particle, icon, fancyName, permission, count, offsetX, offsetY, offsetZ, speed, null);
+      this(key, particle, icon, fancyName, count, offsetX, offsetY, offsetZ, speed, null);
     }
 
-    TrailParticle(String key, Particle particle, Material icon, String fancyName, String permission,
+    TrailParticle(String key, Particle particle, Material icon, String fancyName,
                   int count, double offsetX, double offsetY, double offsetZ, double speed,
                   Material dataMaterial) {
       this.key = key;
       this.particle = particle;
       this.icon = icon;
       this.fancyName = fancyName;
-      this.permission = permission;
       this.count = count;
       this.offsetX = offsetX;
       this.offsetY = offsetY;
