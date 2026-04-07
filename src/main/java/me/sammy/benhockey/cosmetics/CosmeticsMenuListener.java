@@ -38,7 +38,7 @@ public class CosmeticsMenuListener implements Listener {
     inv.setItem(11, makeItem(Material.STICK, "&b&lHockey Sticks",
             list("&7Customize your base stick."), true));
     inv.setItem(13, makeItem(Material.IRON_BOOTS, "&3&lGoalie Pad Selector",
-            list("&7Customize goalie pad boots."), true));
+            list("&7Customize goalie pad boots."), false));
     inv.setItem(15, makeItem(Material.COMPASS, "&a&lParticle Selector",
             list("&7Choose your puck particle."), true));
     player.openInventory(inv);
@@ -96,13 +96,13 @@ public class CosmeticsMenuListener implements Listener {
       if (slot >= 45) {
         break;
       }
-      inv.setItem(slot++, makeItem(padType.material, "&b" + padType.fancyName, list("&7Click to equip"), false));
+      inv.setItem(slot++, makeGoaliePadItem(padType, "&b" + padType.fancyName, list("&7Click to equip"), false));
     }
 
     CosmeticsManager.GoaliePadType selected = this.cosmeticsManager.getGoaliePadType(player.getUniqueId());
     inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
-    inv.setItem(49, makeItem(selected.material, "&aCurrent: &f" + selected.fancyName,
-            list("&7Your selected goalie pad style."), true));
+    inv.setItem(49, makeGoaliePadItem(selected, "&aCurrent: &f" + selected.fancyName,
+            list("&7Your selected goalie pad style."), false));
     player.openInventory(inv);
   }
 
@@ -220,5 +220,27 @@ public class CosmeticsMenuListener implements Listener {
     }
     item.setItemMeta(meta);
     return item;
+  }
+
+  private ItemStack makeGoaliePadItem(CosmeticsManager.GoaliePadType padType, String name, List<String> lore, boolean glow) {
+    ItemStack boots = this.cosmeticsManager.createGoaliePadBootsForType(padType);
+    ItemMeta meta = boots.getItemMeta();
+    if (meta == null) {
+      return boots;
+    }
+    meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
+    if (!lore.isEmpty()) {
+      List<String> coloredLore = new ArrayList<>();
+      for (String line : lore) {
+        coloredLore.add(ChatColor.translateAlternateColorCodes('&', line));
+      }
+      meta.setLore(coloredLore);
+    }
+    if (glow) {
+      meta.addEnchant(org.bukkit.enchantments.Enchantment.KNOCKBACK, 1, true);
+      meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+    }
+    boots.setItemMeta(meta);
+    return boots;
   }
 }

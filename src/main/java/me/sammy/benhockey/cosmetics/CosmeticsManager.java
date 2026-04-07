@@ -139,6 +139,10 @@ public class CosmeticsManager {
 
   public ItemStack createGoaliePadBoots(UUID playerId) {
     GoaliePadType type = getGoaliePadType(playerId);
+    return createGoaliePadBootsForType(type);
+  }
+
+  public ItemStack createGoaliePadBootsForType(GoaliePadType type) {
     ItemStack boots = new ItemStack(type.material);
     ItemMeta meta = boots.getItemMeta();
     if (meta == null) {
