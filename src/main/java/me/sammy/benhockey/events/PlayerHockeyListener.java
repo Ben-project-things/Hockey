@@ -51,6 +51,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
+import me.sammy.benhockey.BenHockey;
+import me.sammy.benhockey.cosmetics.CosmeticsManager;
 import me.sammy.benhockey.game.GameState;
 import me.sammy.benhockey.game.Rink;
 import me.sammy.benhockey.lobby.LobbyManager;
@@ -123,6 +125,7 @@ public class PlayerHockeyListener implements Listener {
     this.shiftLiftHitCooldownMillis.remove(playerId);
     player.removePotionEffect(PotionEffectType.POISON);
     player.removePotionEffect(PotionEffectType.SLOW);
+    getCosmeticsManager().loadPlayer(playerId);
   }
 
   @EventHandler
@@ -417,8 +420,7 @@ public class PlayerHockeyListener implements Listener {
 
     Player player = (Player) e.getDamager();
     ItemStack item = player.getInventory().getItemInMainHand();
-    ItemMeta meta = (item != null && item.getType() == Material.STICK)
-            ? item.getItemMeta() : null;
+    ItemMeta meta = isHockeyStick(item) ? item.getItemMeta() : null;
 
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
@@ -518,10 +520,14 @@ public class PlayerHockeyListener implements Listener {
         double sideDot = toPuck.dot(right);
         Vector sideShuffle = sideDot < 0 ? right.clone() : right.clone().multiply(-1);
         sideShuffle.multiply(DANGLE_LEVEL_ONE_SLIDE_STRENGTH);
-        sideShuffle.setY(0.0);
+        if (shiftLift) {
+          sideShuffle.setY(getPuckLiftY(slime, updatedVelocity.getY(), 0.08, getShiftLift(charge)));
+        } else {
+          sideShuffle.setY(0.0);
+        }
         slime.setVelocity(sideShuffle);
-        player.setVelocity(sideShuffle.clone());
-        if (player.isSneaking()) {
+        player.setVelocity(sideShuffle.clone().setY(0.0));
+        if (shiftLift) {
           this.shiftLiftHitCooldownMillis.put(player.getUniqueId(), nowMillis() + SHIFT_LIFT_HIT_COOLDOWN_MS);
         }
         return;
@@ -537,6 +543,7 @@ public class PlayerHockeyListener implements Listener {
         if (shiftLift) {
           pull.setY(getPuckLiftY(slime, updatedVelocity.getY(), 0.10, getShiftLift(charge)));
           pull.setY(Math.min(pull.getY(), SHIFT_LIFT_Y_HARD_CAP));
+          this.shiftLiftHitCooldownMillis.put(player.getUniqueId(), nowMillis() + SHIFT_LIFT_HIT_COOLDOWN_MS);
         } else {
           pull.setY(0.0);
         }
@@ -585,8 +592,10 @@ public class PlayerHockeyListener implements Listener {
       return Math.max(Math.max(currentY, basePop), requestedLift);
     }
 
-    double marginalIncrease = Math.max(currentY + 0.05, requestedLift * 0.72);
-    return Math.max(Math.max(currentY, basePop), Math.min(marginalIncrease, 0.48));
+    double target = Math.max(basePop, requestedLift);
+    double gap = Math.max(0.0, target - currentY);
+    double diminishingIncrease = Math.min(0.13, (gap * 0.35) + 0.02);
+    return Math.min(SHIFT_LIFT_Y_HARD_CAP, Math.max(currentY, basePop) + diminishingIncrease);
   }
 
 
@@ -817,7 +826,9 @@ public class PlayerHockeyListener implements Listener {
       for (Slime slime : world.getEntitiesByClass(Slime.class)) {
         UUID slimeId = slime.getUniqueId();
         livePucks.add(slimeId);
-        world.spawnParticle(Particle.FLAME, slime.getLocation(), 1, 0, 0, 0, 0);
+        for (Player viewer : world.getPlayers()) {
+          getCosmeticsManager().spawnParticleFor(viewer, slime.getLocation());
+        }
         slime.setRotation(0f, 0f);
         Vector previousVelocity = this.lastPuckVelocity.getOrDefault(
                 slimeId,
@@ -1322,7 +1333,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     double projectedY = puckLoc.getY() + slime.getVelocity().getY() * t;
-    if (projectedY < target.getY() - 0.8 || projectedY > target.getY() + 2.3) {
+    if (projectedY < target.getY() - 0.8 || projectedY > target.getY() + 1.35) {
       return;
     }
 
@@ -1608,6 +1619,10 @@ public class PlayerHockeyListener implements Listener {
     }
   }
 
+  private CosmeticsManager getCosmeticsManager() {
+    return ((BenHockey) this.plugin).getCosmeticsManager();
+  }
+
   private long nowMillis() {
     return System.currentTimeMillis();
   }
@@ -1618,8 +1633,7 @@ public class PlayerHockeyListener implements Listener {
    */
   private void resetPower(Player p) {
     ItemStack item = p.getInventory().getItemInMainHand();
-    ItemMeta meta = item.getType() == Material.STICK
-            ? item.getItemMeta() : null;
+    ItemMeta meta = isHockeyStick(item) ? item.getItemMeta() : null;
 
     if (meta == null || !meta.hasDisplayName() || !isHockeyStickName(meta.getDisplayName())) {
       return;
@@ -1660,7 +1674,7 @@ public class PlayerHockeyListener implements Listener {
   }
 
   private boolean isHockeyStick(ItemStack item) {
-    if (item == null || item.getType() != Material.STICK || !item.hasItemMeta()) {
+    if (item == null || !CosmeticsManager.isValidStickMaterial(item.getType()) || !item.hasItemMeta()) {
       return false;
     }
 

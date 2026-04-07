@@ -3,6 +3,8 @@ package me.sammy.benhockey;
 
 import me.sammy.benhockey.commands.GameCommands;
 import me.sammy.benhockey.commands.MyTabCompleter;
+import me.sammy.benhockey.cosmetics.CosmeticsManager;
+import me.sammy.benhockey.cosmetics.CosmeticsMenuListener;
 import me.sammy.benhockey.lobby.LobbyManager;
 
 import me.sammy.benhockey.events.PlayerHockeyListener;
@@ -19,24 +21,30 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class BenHockey extends JavaPlugin {
 
     private LobbyManager lobbyManager;
+    private CosmeticsManager cosmeticsManager;
+    private CosmeticsMenuListener cosmeticsMenuListener;
 
     @Override
     public void onEnable() {
 
         lobbyManager = new LobbyManager(this);
+        cosmeticsManager = new CosmeticsManager(this);
+        cosmeticsMenuListener = new CosmeticsMenuListener(cosmeticsManager);
+        Bukkit.getOnlinePlayers().forEach(player -> cosmeticsManager.loadPlayer(player.getUniqueId()));
 
         getServer().getPluginManager().registerEvents(
                 new PlayerImportantEventsListener(this.lobbyManager), this);
 
         PlayerHockeyListener hockeyStickListener = new PlayerHockeyListener(lobbyManager, this);
         getServer().getPluginManager().registerEvents(hockeyStickListener, this);
+        getServer().getPluginManager().registerEvents(cosmeticsMenuListener, this);
         Bukkit.getScheduler().runTaskTimer(this, hockeyStickListener::update, 1L, 1L);
 
 
         registerCommands(new String[]{"rink", "join", "team", "goalie", "leave", "goalie", "stats", "puck",
                         "startgame", "pregame", "endgame", "togglehitting", "whistle", "penalty",
                         "lockteams", "setteamname", "fo", "settime", "bench", "createrink", "setgoal",
-                        "cancelrink", "deleterink", "help"},
+                        "cancelrink", "deleterink", "help", "cosmetic", "cosmetics"},
                 new GameCommands(this.lobbyManager));
 
         getCommand("join").setTabCompleter(new MyTabCompleter(lobbyManager));
@@ -53,6 +61,9 @@ public final class BenHockey extends JavaPlugin {
   public void onDisable() {
 
         lobbyManager.saveRinksToConfig();
+        if (cosmeticsManager != null) {
+            cosmeticsManager.saveAll();
+        }
         lobbyManager.removeLobbyPlayers();
 
         for (World world : Bukkit.getWorlds()) {
@@ -76,6 +87,15 @@ public final class BenHockey extends JavaPlugin {
                 getLogger().warning("Command " + command + " is not defined in plugin.yml");
             }
         }
+    }
+
+
+    public CosmeticsManager getCosmeticsManager() {
+        return cosmeticsManager;
+    }
+
+    public CosmeticsMenuListener getCosmeticsMenuListener() {
+        return cosmeticsMenuListener;
     }
 
     //TODO
