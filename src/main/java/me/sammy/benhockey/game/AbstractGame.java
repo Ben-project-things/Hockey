@@ -739,7 +739,6 @@ public abstract class AbstractGame implements Game {
     }
   }
 
-  //TODO Fix this penalty stuff
   @Override
   public void penalty(Player commandSender, String type, String playerName, String reason,
                       String timeStr) {
