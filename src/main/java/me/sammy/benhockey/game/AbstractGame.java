@@ -765,7 +765,8 @@ public abstract class AbstractGame implements Game {
           onlinePlayer.teleport(rink.getPenaltyBox());
         }
         for (Player p : rink.getAllPlayers()) {
-          p.sendTitle("§6Penalty: " + reason, "§7Player: " + colorizePenaltyPlayerName(playerName) + "§7 | Time: " + timeStr +
+          p.sendTitle("§6§lPenalty: §e§l" + reason,
+                  "§7Player: " + colorizePenaltyPlayerName(playerName) + "§8 | §7Time: §f" + timeStr +
                           "s",
                   10, 40, 10);
         }

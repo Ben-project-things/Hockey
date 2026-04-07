@@ -62,7 +62,7 @@ public class PlayerHockeyListener implements Listener {
 
   private static final int GOALIE_SLIDE_COOLDOWN_TICKS = 10;
   private static final int GOALIE_GLOVE_REGRAB_COOLDOWN_TICKS = 10;
-  private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 0;
+  private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 1;
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
   private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.82;
