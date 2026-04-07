@@ -55,3 +55,8 @@ commands:
     description: deletes a rink from use
   help:
     description: Show help
+
+  cosmetic:
+    description: Open cosmetics menu
+  cosmetics:
+    description: Open cosmetics menu

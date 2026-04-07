@@ -5,13 +5,9 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeModifier;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ItemFlag;
@@ -30,6 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import me.sammy.benhockey.BenHockey;
+import me.sammy.benhockey.cosmetics.CosmeticsManager;
 
 /**
  * The data involved with a rink.
@@ -168,7 +166,7 @@ public class Rink {
           p.teleport(this.awayBench);
         }
 
-        inventory.addItem(createHockeyStick());
+        inventory.addItem(createHockeyStick(p));
         break;
 
       default:
@@ -178,43 +176,19 @@ public class Rink {
   }
 
 
-  /**
-   * Creates the hockey stick item with desired attributes.
-   * @return the hockey stick ItemStack
-   */
-  private ItemStack createHockeyStick() {
-    ItemStack hockeyStick = new ItemStack(Material.STICK);
-    ItemMeta meta = hockeyStick.getItemMeta();
-
-    AttributeModifier attackSpeedModifier = new AttributeModifier(
-            UUID.randomUUID(),
-            "generic_attack_speed",
-            2.5,
-            AttributeModifier.Operation.ADD_NUMBER,
-            EquipmentSlot.HAND
-    );
-
-    meta.addAttributeModifier(Attribute.GENERIC_ATTACK_SPEED, attackSpeedModifier);
-    meta.setDisplayName("§aHockey Stick");
-    meta.addEnchant(Enchantment.KNOCKBACK, 1, true);
-    hockeyStick.setItemMeta(meta);
-
-    return hockeyStick;
+  private ItemStack createHockeyStick(Player player) {
+    return getCosmeticsManager().createStickItem(player, false);
   }
 
-  private ItemStack createGoalieStick() {
-    ItemStack goalieStick = createHockeyStick();
-    ItemMeta meta = goalieStick.getItemMeta();
-    meta.setDisplayName("§bGoalie Stick");
-    goalieStick.setItemMeta(meta);
-    return goalieStick;
+  private ItemStack createGoalieStick(Player player) {
+    return getCosmeticsManager().createStickItem(player, true);
   }
 
   private void replaceStick(Player player, String oldDisplayName, ItemStack newStick) {
     Inventory inventory = player.getInventory();
     for (int i = 0; i < inventory.getSize(); i++) {
       ItemStack item = inventory.getItem(i);
-      if (item == null || item.getType() != Material.STICK || !item.hasItemMeta()) {
+      if (item == null || !CosmeticsManager.isValidStickMaterial(item.getType()) || !item.hasItemMeta()) {
         continue;
       }
       ItemMeta itemMeta = item.getItemMeta();
@@ -226,6 +200,10 @@ public class Rink {
     }
 
     inventory.addItem(newStick);
+  }
+
+  private CosmeticsManager getCosmeticsManager() {
+    return ((BenHockey) this.plugin).getCosmeticsManager();
   }
 
   /**
@@ -876,7 +854,7 @@ public class Rink {
       if (team.equalsIgnoreCase("home") || team.equalsIgnoreCase("away")) {
         createUniform(team, p);
       }
-      replaceStick(p, "§bGoalie Stick", createHockeyStick());
+      replaceStick(p, "§bGoalie Stick", createHockeyStick(p));
       p.sendMessage("§6[§bBH§6] §cYou are no longer a goalie.");
     }
     else {
@@ -887,7 +865,7 @@ public class Rink {
       }
       this.goalies.add(p);
       createGoalieUniform(team, p);
-      replaceStick(p, "§aHockey Stick", createGoalieStick());
+      replaceStick(p, "§aHockey Stick", createGoalieStick(p));
       p.sendMessage("§6[§bBH§6] §aYou are now a goalie.");
     }
   }
