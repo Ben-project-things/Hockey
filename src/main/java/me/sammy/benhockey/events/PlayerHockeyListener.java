@@ -42,6 +42,8 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.EulerAngle;
 import org.bukkit.util.Vector;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -95,6 +97,9 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> shiftLiftHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> recentShotOnTargetCreditMillis = new HashMap<>();
+  private final Map<UUID, Long> suppressGroundBounceUntilMillis = new HashMap<>();
+  private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
+  private final Map<UUID, UUID> goalieOwnHitNoGlovePlayer = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
@@ -177,7 +182,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    if (e.isSneaking() && lobbyManager.isPlayerOnTeam(p) && !lobbyManager.isPlayerAKeeper(p)) {
+    if (e.isSneaking() && lobbyManager.isPlayerOnTeam(p)) {
       charges.put(p.getUniqueId(), 0.0);
     } else {
       p.setExp(0.0f);
@@ -294,6 +299,16 @@ public class PlayerHockeyListener implements Listener {
     }
 
     ItemStack interactItem = player.getInventory().getItemInMainHand();
+    if (player.isSneaking()
+            && action == Action.RIGHT_CLICK_BLOCK
+            && e.getClickedBlock() != null
+            && e.getClickedBlock().getType() == Material.BARRIER
+            && isHockeyStick(interactItem)
+            && handleBenchBarrierInteract(player, e.getClickedBlock().getLocation())) {
+      e.setCancelled(true);
+      return;
+    }
+
     if (isHockeyStick(interactItem)) {
 
       this.rightClickCooldown.add(uuid);
@@ -446,7 +461,10 @@ public class PlayerHockeyListener implements Listener {
     long now = System.currentTimeMillis();
     double speed = slime.getVelocity().length();
     long gloveCooldownEnd = this.goalieGloveReleaseCooldownMillis.getOrDefault(player.getUniqueId(), 0L);
-    if (lobbyManager.isPlayerAKeeper(player) && speed > 0.3 && now >= gloveCooldownEnd) {
+    if (lobbyManager.isPlayerAKeeper(player)
+            && speed > 0.3
+            && now >= gloveCooldownEnd
+            && canGoalieGlovePuck(player, slime, now)) {
       handleGoalieGlove(player, slime);
       this.lobbyManager.getPlayerRink(player).addPlayerLastHit(player);
       e.setCancelled(true);
@@ -466,7 +484,10 @@ public class PlayerHockeyListener implements Listener {
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
 
     double charge = getShiftCharge(player);
-    boolean wantsShiftLift = player.isSneaking() && charge > 0.02;
+    boolean goalie = this.lobbyManager.isPlayerAKeeper(player);
+    boolean wantsShiftLift = player.isSneaking()
+            && charge > 0.02
+            && (!goalie || hitLevel >= 3);
     long shiftLiftCooldownEnd = this.shiftLiftHitCooldownMillis.getOrDefault(player.getUniqueId(), 0L);
     if (player.isSneaking() && now < shiftLiftCooldownEnd) {
       e.setCancelled(true);
@@ -480,6 +501,10 @@ public class PlayerHockeyListener implements Listener {
     Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
       if (slime.isDead() || !slime.isValid()) {
         return;
+      }
+      if (goalie) {
+        this.goalieOwnHitNoGloveUntilMillis.put(slime.getUniqueId(), nowMillis() + 650L);
+        this.goalieOwnHitNoGlovePlayer.put(slime.getUniqueId(), player.getUniqueId());
       }
 
       if (dangleMode) {
@@ -654,6 +679,8 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
+        goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR,
+                TextComponent.fromLegacyText("§bPuck glove: §f" + seconds + "s"));
         goalie.playSound(goalie.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 20f, 1f);
         seconds--;
       }
@@ -681,8 +708,11 @@ public class PlayerHockeyListener implements Listener {
     puck.setRotation(0f, 0f);
     glovedGoalies.remove(id);
     updateGoalieGloveIndicator(goalie, false);
+    goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
 
     puck.setVelocity(new Vector(0, 0.02, 0));
+    this.suppressGroundBounceUntilMillis.put(puck.getUniqueId(), nowMillis() + 1200L);
+    puck.setNoDamageTicks(0);
     this.goalieGloveReleaseCooldownMillis.put(id, nowMillis() + (GOALIE_GLOVE_REGRAB_COOLDOWN_TICKS * 50L));
   }
 
@@ -697,6 +727,7 @@ public class PlayerHockeyListener implements Listener {
     Player goalie = Bukkit.getPlayer(goalieId);
     if (goalie != null) {
       updateGoalieGloveIndicator(goalie, false);
+      goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
     }
   }
 
@@ -727,6 +758,11 @@ public class PlayerHockeyListener implements Listener {
 
     if (e.getCause() == EntityDamageEvent.DamageCause.FALL) {
       Slime slime = (Slime) e.getEntity();
+      long suppressUntil = this.suppressGroundBounceUntilMillis.getOrDefault(slime.getUniqueId(), 0L);
+      if (nowMillis() < suppressUntil) {
+        e.setCancelled(true);
+        return;
+      }
       if (e.getDamage() > 0.0) {
         applyGroundBounce(slime, e.getDamage());
       }
@@ -812,6 +848,11 @@ public class PlayerHockeyListener implements Listener {
       }
 
       double charge = this.charges.get(uuid);
+      if (this.lobbyManager.isPlayerAKeeper(p) && p.getLevel() < 3) {
+        this.charges.put(uuid, 0.0);
+        p.setExp(0.0f);
+        continue;
+      }
       double chargeRate = 0.15 - (charge * 0.08);
       double nextCharge = charge + ((1.0 - charge) * chargeRate);
       nextCharge = Math.min(nextCharge, 0.99);
@@ -860,6 +901,9 @@ public class PlayerHockeyListener implements Listener {
     this.recentGoalieBounceMillis.keySet().retainAll(livePucks);
     this.recentGoalieBouncePlayer.keySet().retainAll(livePucks);
     this.recentShotOnTargetCreditMillis.keySet().retainAll(livePucks);
+    this.suppressGroundBounceUntilMillis.keySet().retainAll(livePucks);
+    this.goalieOwnHitNoGloveUntilMillis.keySet().retainAll(livePucks);
+    this.goalieOwnHitNoGlovePlayer.keySet().retainAll(livePucks);
     this.goalieGloveReleaseCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 5000L);
     this.playerHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 1000L);
     this.shiftLiftHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue());
@@ -1101,6 +1145,7 @@ public class PlayerHockeyListener implements Listener {
     if (bounceY < 0.12) {
       return;
     }
+    slime.setNoDamageTicks(0);
 
     Bukkit.getScheduler().runTask(this.plugin, () -> {
       if (slime.isDead() || !slime.isValid()) {
@@ -1112,6 +1157,7 @@ public class PlayerHockeyListener implements Listener {
       newVelocity.setX(newVelocity.getX() * 0.96);
       newVelocity.setZ(newVelocity.getZ() * 0.96);
       slime.setVelocity(newVelocity);
+      slime.setNoDamageTicks(0);
     });
     slime.getWorld().playSound(slime.getLocation(), Sound.BLOCK_BASALT_STEP, 15f, 1.5f);
   }
@@ -1532,12 +1578,12 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Location base = goalie.getLocation().clone()
-            .add(forward.clone().multiply(0.52))
+            .add(forward.clone().multiply(0.40))
             .add(goalieVelocity);
     float padYaw = goalie.getLocation().getYaw();
 
-    Location leftPad = base.clone().add(left.clone().multiply(0.22));
-    Location rightPad = base.clone().subtract(left.clone().multiply(0.22));
+    Location leftPad = base.clone().add(left.clone().multiply(0.18));
+    Location rightPad = base.clone().subtract(left.clone().multiply(0.18));
     leftPad.setYaw(padYaw + 16f);
     rightPad.setYaw(padYaw - 16f);
     leftPad.setPitch(0f);
@@ -1642,31 +1688,64 @@ public class PlayerHockeyListener implements Listener {
 
     int hitLevel = Math.max(1, Math.min(3, damager.getLevel()));
     this.resetPower(damager);
-    e.setCancelled(true);
-    Vector push = damaged.getLocation().toVector().subtract(damager.getLocation().toVector()).setY(0);
-    if (push.lengthSquared() < 0.0001) {
-      push = damager.getLocation().getDirection().setY(0);
-    }
-    if (push.lengthSquared() < 0.0001) {
-      push = new Vector(0, 0, 1);
-    }
-
-    double horizontalStrength = hitLevel == 3 ? 1.2 : (0.95 + (hitLevel * 0.45));
-    Vector knockback = push.normalize().multiply(horizontalStrength);
-
-    double currentY = damaged.getVelocity().getY();
-    boolean liftHit = damager.isSneaking();
-    double lift = damaged.isOnGround()
-            ? (0.08 + hitLevel * 0.06)
-            : (liftHit ? (0.05 + hitLevel * 0.03) : (0.13 + hitLevel * 0.05));
-    knockback.setY(Math.max(currentY, lift));
-
-    damaged.setVelocity(knockback);
-    damaged.playEffect(EntityEffect.HURT);
-    damaged.getWorld().spawnParticle(Particle.DAMAGE_INDICATOR, damaged.getLocation().add(0, 1.05, 0), 8, 0.25, 0.35, 0.25, 0.0);
-    damaged.getWorld().playSound(damaged.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1f, 0.9f + (hitLevel * 0.07f));
+    e.setDamage(0.0);
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
     damager.sendMessage("§6[§bBH§6] §aYou hit §f" + damaged.getName() + " §7-> Power " + hitLevel);
+  }
+
+  private boolean canGoalieGlovePuck(Player goalie, Slime puck, long now) {
+    UUID puckId = puck.getUniqueId();
+    long ownHitLockEnd = this.goalieOwnHitNoGloveUntilMillis.getOrDefault(puckId, 0L);
+    UUID ownHitGoalie = this.goalieOwnHitNoGlovePlayer.get(puckId);
+    if (ownHitGoalie != null && ownHitGoalie.equals(goalie.getUniqueId()) && now < ownHitLockEnd) {
+      return false;
+    }
+    return true;
+  }
+
+  private boolean handleBenchBarrierInteract(Player player, Location barrier) {
+    Rink rink = this.lobbyManager.getPlayerRink(player);
+    if (rink == null) {
+      return false;
+    }
+
+    String team = rink.getTeam(player);
+    Location teamBench = null;
+    if ("home".equalsIgnoreCase(team)) {
+      teamBench = rink.getHomeBench();
+    } else if ("away".equalsIgnoreCase(team)) {
+      teamBench = rink.getAwayBench();
+    }
+    if (teamBench == null) {
+      return false;
+    }
+
+    if (!barrier.getWorld().equals(teamBench.getWorld()) || barrier.distanceSquared(teamBench) > 25.0) {
+      return false;
+    }
+
+    Location destination;
+    if (player.getLocation().distanceSquared(teamBench) <= 6.25) {
+      Vector toCenter = rink.getCenterIce().toVector().subtract(teamBench.toVector()).setY(0);
+      if (toCenter.lengthSquared() < 0.0001) {
+        toCenter = player.getLocation().getDirection().setY(0);
+      }
+      if (toCenter.lengthSquared() < 0.0001) {
+        toCenter = new Vector(0, 0, 1);
+      }
+      toCenter.normalize();
+      destination = teamBench.clone().add(toCenter.multiply(3.0));
+      destination.setY(player.getLocation().getY());
+      player.sendMessage("§6[§bBH§6] §aYou stepped off your bench.");
+    } else {
+      destination = teamBench.clone();
+      player.sendMessage("§6[§bBH§6] §aYou hopped onto your bench.");
+    }
+
+    destination.setYaw(player.getLocation().getYaw());
+    destination.setPitch(player.getLocation().getPitch());
+    player.teleport(destination);
+    return true;
   }
 
   private boolean isOnIceSurface(Player player) {
