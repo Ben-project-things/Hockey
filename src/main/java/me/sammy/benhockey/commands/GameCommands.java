@@ -389,7 +389,6 @@ public class GameCommands implements CommandExecutor {
           return true;
 
 
-        case "cosmetic":
         case "cosmetics":
           ((BenHockey) this.lobbyManager.getPlugin()).getCosmeticsMenuListener().openMainMenu(player);
           return true;

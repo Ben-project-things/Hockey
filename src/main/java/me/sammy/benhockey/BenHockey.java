@@ -44,7 +44,7 @@ public final class BenHockey extends JavaPlugin {
         registerCommands(new String[]{"rink", "join", "team", "goalie", "leave", "goalie", "stats", "puck",
                         "startgame", "pregame", "endgame", "togglehitting", "whistle", "penalty",
                         "lockteams", "setteamname", "fo", "settime", "bench", "createrink", "setgoal",
-                        "cancelrink", "deleterink", "help", "cosmetic", "cosmetics"},
+                        "cancelrink", "deleterink", "help", "cosmetics"},
                 new GameCommands(this.lobbyManager));
 
         getCommand("join").setTabCompleter(new MyTabCompleter(lobbyManager));
