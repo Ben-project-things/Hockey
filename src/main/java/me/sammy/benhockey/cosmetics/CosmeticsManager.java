@@ -217,7 +217,7 @@ public class CosmeticsManager {
     HEART("heart", Particle.HEART, Material.APPLE, "Heart", 1, 0, 0, 0, 0),
     SPLASH("splash", Particle.WATER_SPLASH, Material.WATER_BUCKET, "Splash", 5, 0, 0, 0, 0),
     SLIME("slime", Particle.SLIME, Material.SLIME_BALL, "Slime", 1, 0, 0, 0, 0),
-    LAVA("lava", Particle.LAVA, Material.LAVA_BUCKET, "Lava", 5, 0, 0, 0, 0),
+    LAVA("lava", Particle.DRIP_LAVA, Material.LAVA_BUCKET, "Lava", 5, 0, 0, 0, 0),
     CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", 1, 0, 0, 0, 0),
     RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", 1, 0, 0, 0, 0),
     GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", 2, 0.1, 0.1, 0.1, 0),
