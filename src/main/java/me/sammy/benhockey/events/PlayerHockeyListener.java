@@ -89,6 +89,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, ArmorStand> spectatorCamStands = new HashMap<>();
+  private final Set<UUID> releasedSpectatorCamera = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
@@ -117,6 +118,7 @@ public class PlayerHockeyListener implements Listener {
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
     this.recentGoalieBouncePlayer.values().removeIf(id -> id.equals(e.getPlayer().getUniqueId()));
+    this.releasedSpectatorCamera.remove(e.getPlayer().getUniqueId());
   }
 
   @EventHandler
@@ -145,6 +147,7 @@ public class PlayerHockeyListener implements Listener {
     if (message.startsWith("/join") || message.startsWith("/team") || message.startsWith("/goalie")) {
       setDangleMode(player, false);
       this.resetPower(player);
+      this.releasedSpectatorCamera.remove(player.getUniqueId());
     }
   }
 
@@ -165,6 +168,10 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onSneak(PlayerToggleSneakEvent e) {
     Player p = e.getPlayer();
+    if (p.getGameMode() == GameMode.SPECTATOR && !this.lobbyManager.isPlayerInLobby(p)) {
+      p.setSpectatorTarget(null);
+      this.releasedSpectatorCamera.add(p.getUniqueId());
+    }
 
     if (lobbyManager.isPlayerInLobby(p)) {
       return;
@@ -922,7 +929,11 @@ public class PlayerHockeyListener implements Listener {
 
     for (Player player : rink.getAllPlayers()) {
       if (player.getGameMode() == GameMode.SPECTATOR) {
-        player.setSpectatorTarget(camera);
+        if (!this.releasedSpectatorCamera.contains(player.getUniqueId())) {
+          player.setSpectatorTarget(camera);
+        }
+      } else {
+        this.releasedSpectatorCamera.remove(player.getUniqueId());
       }
     }
   }
@@ -1344,35 +1355,21 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      Vector contactNormal = puckLoc.toVector().subtract(player.getLocation().toVector()).setY(0);
-      if (contactNormal.lengthSquared() < 0.0001) {
-        float yawRadians = (float) Math.toRadians(player.getLocation().getYaw());
-        contactNormal = new Vector(-Math.sin(yawRadians), 0, Math.cos(yawRadians));
+      float yawRadians = (float) Math.toRadians(player.getLocation().getYaw());
+      Vector yawRedirect = new Vector(-Math.sin(yawRadians), 0, Math.cos(yawRadians));
+      if (yawRedirect.lengthSquared() < 0.0001) {
+        yawRedirect = player.getLocation().getDirection().setY(0);
       }
-      contactNormal.normalize();
-
-      Vector incomingHorizontal = velocity.clone().setY(0);
-      if (incomingHorizontal.lengthSquared() < 0.0001) {
-        incomingHorizontal = contactNormal.clone().multiply(-horizontalSpeed);
+      if (yawRedirect.lengthSquared() < 0.0001) {
+        yawRedirect = new Vector(0, 0, 1);
       }
+      yawRedirect.normalize();
 
-      double towardGoalie = incomingHorizontal.dot(contactNormal);
-      if (towardGoalie >= 0) {
-        continue;
-      }
-
-      Vector reflected = incomingHorizontal.clone().subtract(contactNormal.clone().multiply(2 * towardGoalie));
-      if (reflected.lengthSquared() < 0.0001) {
-        reflected = contactNormal.clone();
-      } else {
-        reflected.normalize();
-      }
-
-      Vector bounced = reflected.clone().multiply(Math.max(0.26, horizontalSpeed * 0.98));
-      bounced.setY(Math.max(0.04, velocity.getY()));
+      Vector bounced = yawRedirect.multiply(Math.max(0.22, horizontalSpeed * 0.9));
+      bounced.setY(Math.max(0.04, velocity.getY() * 0.95));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = reflected.clone().multiply(0.66).setY(0);
+      Vector pushDirection = yawRedirect.clone().multiply(0.66).setY(0);
       Location pushOut = puckLoc.clone().add(pushDirection);
       if (isPassableForPuck(pushOut)) {
         slime.teleport(pushOut);
@@ -1547,6 +1544,10 @@ public class PlayerHockeyListener implements Listener {
     rightPad.setPitch(0f);
     pads.get(0).teleport(leftPad);
     pads.get(1).teleport(rightPad);
+    ItemStack padBoots = getCosmeticsManager().createGoaliePadBoots(goalie.getUniqueId());
+    for (ArmorStand pad : pads) {
+      pad.getEquipment().setBoots(padBoots.clone());
+    }
     for (ArmorStand pad : pads) {
       pad.setHeadPose(new EulerAngle(0, 0, 0));
       pad.setBodyPose(new EulerAngle(0, 0, 0));

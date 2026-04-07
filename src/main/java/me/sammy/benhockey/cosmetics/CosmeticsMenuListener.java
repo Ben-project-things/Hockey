@@ -25,6 +25,7 @@ public class CosmeticsMenuListener implements Listener {
   private static final String MAIN_TITLE = "§8Cosmetics";
   private static final String STICKS_TITLE = "§b§lHockey Sticks";
   private static final String PARTICLE_TITLE = "§a§lParticle Selector";
+  private static final String GOALIE_PADS_TITLE = "§3§lGoalie Pad Selector";
   private final CosmeticsManager cosmeticsManager;
 
   public CosmeticsMenuListener(CosmeticsManager cosmeticsManager) {
@@ -36,6 +37,8 @@ public class CosmeticsMenuListener implements Listener {
     fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
     inv.setItem(11, makeItem(Material.STICK, "&b&lHockey Sticks",
             list("&7Customize your base stick."), true));
+    inv.setItem(13, makeItem(Material.IRON_BOOTS, "&3&lGoalie Pad Selector",
+            list("&7Customize goalie pad boots."), true));
     inv.setItem(15, makeItem(Material.COMPASS, "&a&lParticle Selector",
             list("&7Choose your puck particle."), true));
     player.openInventory(inv);
@@ -52,6 +55,7 @@ public class CosmeticsMenuListener implements Listener {
     }
 
     CosmeticsManager.StickType selected = this.cosmeticsManager.getStickType(player.getUniqueId());
+    inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
     inv.setItem(49, makeItem(selected.material, "&aCurrent: &f" + selected.fancy,
             list("&7Your selected hockey stick."), true));
 
@@ -75,9 +79,30 @@ public class CosmeticsMenuListener implements Listener {
     }
 
     CosmeticsManager.TrailParticle selected = this.cosmeticsManager.getParticle(player.getUniqueId());
+    inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
     inv.setItem(49, makeItem(selected.icon, "&aCurrent: &f" + selected.fancyName,
             list("&7Your selected puck particle."), true));
 
+    player.openInventory(inv);
+  }
+
+  public void openGoaliePadMenu(Player player) {
+    Inventory inv = Bukkit.createInventory(null, 54, GOALIE_PADS_TITLE);
+    fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
+    fillRow(inv, 5, Material.BLACK_STAINED_GLASS_PANE, " ");
+
+    int slot = 0;
+    for (CosmeticsManager.GoaliePadType padType : CosmeticsManager.GoaliePadType.values()) {
+      if (slot >= 45) {
+        break;
+      }
+      inv.setItem(slot++, makeItem(padType.material, "&b" + padType.fancyName, list("&7Click to equip"), false));
+    }
+
+    CosmeticsManager.GoaliePadType selected = this.cosmeticsManager.getGoaliePadType(player.getUniqueId());
+    inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
+    inv.setItem(49, makeItem(selected.material, "&aCurrent: &f" + selected.fancyName,
+            list("&7Your selected goalie pad style."), true));
     player.openInventory(inv);
   }
 
@@ -89,7 +114,8 @@ public class CosmeticsMenuListener implements Listener {
 
     Player player = (Player) event.getWhoClicked();
     String title = event.getView().getTitle();
-    if (!MAIN_TITLE.equals(title) && !STICKS_TITLE.equals(title) && !PARTICLE_TITLE.equals(title)) {
+    if (!MAIN_TITLE.equals(title) && !STICKS_TITLE.equals(title)
+            && !PARTICLE_TITLE.equals(title) && !GOALIE_PADS_TITLE.equals(title)) {
       return;
     }
 
@@ -102,6 +128,8 @@ public class CosmeticsMenuListener implements Listener {
     if (MAIN_TITLE.equals(title)) {
       if (slot == 11) {
         openStickMenu(player);
+      } else if (slot == 13) {
+        openGoaliePadMenu(player);
       } else if (slot == 15) {
         openParticleMenu(player);
       }
@@ -109,6 +137,10 @@ public class CosmeticsMenuListener implements Listener {
     }
 
     if (STICKS_TITLE.equals(title)) {
+      if (slot == 45) {
+        openMainMenu(player);
+        return;
+      }
       if (slot < CosmeticsManager.StickType.values().length) {
         CosmeticsManager.StickType selected = CosmeticsManager.StickType.values()[slot];
         this.cosmeticsManager.setStickType(player, selected);
@@ -120,6 +152,25 @@ public class CosmeticsMenuListener implements Listener {
       return;
     }
 
+    if (GOALIE_PADS_TITLE.equals(title)) {
+      if (slot == 45) {
+        openMainMenu(player);
+        return;
+      }
+      if (slot < CosmeticsManager.GoaliePadType.values().length && slot < 45) {
+        CosmeticsManager.GoaliePadType selected = CosmeticsManager.GoaliePadType.values()[slot];
+        this.cosmeticsManager.setGoaliePadType(player, selected);
+        player.sendMessage("§6[§bBH§6] §aSelected goalie pads: §f" + selected.fancyName);
+        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+        openGoaliePadMenu(player);
+      }
+      return;
+    }
+
+    if (slot == 45) {
+      openMainMenu(player);
+      return;
+    }
     if (slot < CosmeticsManager.TrailParticle.values().length && slot < 45) {
       CosmeticsManager.TrailParticle selected = CosmeticsManager.TrailParticle.values()[slot];
       this.cosmeticsManager.setParticle(player, selected);

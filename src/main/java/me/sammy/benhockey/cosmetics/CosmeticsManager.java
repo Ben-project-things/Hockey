@@ -22,6 +22,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -37,6 +38,7 @@ public class CosmeticsManager {
   private final YamlConfiguration cosmeticsConfig;
   private final Map<UUID, StickType> playerStickTypes = new HashMap<>();
   private final Map<UUID, TrailParticle> playerParticles = new HashMap<>();
+  private final Map<UUID, GoaliePadType> playerGoaliePads = new HashMap<>();
   private int rainbowTick = 0;
   private int noteTick = 0;
 
@@ -54,6 +56,8 @@ public class CosmeticsManager {
     this.playerStickTypes.put(playerId, StickType.fromKey(this.cosmeticsConfig.getString(base + ".stick", StickType.STICK.key)));
     this.playerParticles.put(playerId,
             TrailParticle.fromKey(this.cosmeticsConfig.getString(base + ".particle", TrailParticle.EMERALD.key)));
+    this.playerGoaliePads.put(playerId,
+            GoaliePadType.fromKey(this.cosmeticsConfig.getString(base + ".goaliepad", GoaliePadType.IRON.key)));
   }
 
   public void saveAll() {
@@ -71,6 +75,7 @@ public class CosmeticsManager {
     String base = "players." + playerId;
     this.cosmeticsConfig.set(base + ".stick", getStickType(playerId).key);
     this.cosmeticsConfig.set(base + ".particle", getParticle(playerId).key);
+    this.cosmeticsConfig.set(base + ".goaliepad", getGoaliePadType(playerId).key);
   }
 
   public StickType getStickType(UUID playerId) {
@@ -81,6 +86,10 @@ public class CosmeticsManager {
     return this.playerParticles.getOrDefault(playerId, TrailParticle.EMERALD);
   }
 
+  public GoaliePadType getGoaliePadType(UUID playerId) {
+    return this.playerGoaliePads.getOrDefault(playerId, GoaliePadType.IRON);
+  }
+
   public void setStickType(Player player, StickType type) {
     this.playerStickTypes.put(player.getUniqueId(), type);
     savePlayer(player.getUniqueId());
@@ -89,6 +98,12 @@ public class CosmeticsManager {
 
   public void setParticle(Player player, TrailParticle particle) {
     this.playerParticles.put(player.getUniqueId(), particle);
+    savePlayer(player.getUniqueId());
+    saveAll();
+  }
+
+  public void setGoaliePadType(Player player, GoaliePadType padType) {
+    this.playerGoaliePads.put(player.getUniqueId(), padType);
     savePlayer(player.getUniqueId());
     saveAll();
   }
@@ -120,6 +135,21 @@ public class CosmeticsManager {
     meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE);
     hockeyStick.setItemMeta(meta);
     return hockeyStick;
+  }
+
+  public ItemStack createGoaliePadBoots(UUID playerId) {
+    GoaliePadType type = getGoaliePadType(playerId);
+    ItemStack boots = new ItemStack(type.material);
+    ItemMeta meta = boots.getItemMeta();
+    if (meta == null) {
+      return boots;
+    }
+    meta.setDisplayName("§bGoalie Pads: §f" + type.fancyName);
+    if (meta instanceof LeatherArmorMeta && type.leatherColor != null) {
+      ((LeatherArmorMeta) meta).setColor(type.leatherColor);
+    }
+    boots.setItemMeta(meta);
+    return boots;
   }
 
 
@@ -301,6 +331,46 @@ public class CosmeticsManager {
         }
       }
       return EMERALD;
+    }
+  }
+
+  public enum GoaliePadType {
+    LEATHER("leather", Material.LEATHER_BOOTS, "Leather", null),
+    GOLD("gold", Material.GOLDEN_BOOTS, "Gold", null),
+    IRON("iron", Material.IRON_BOOTS, "Iron", null),
+    NETHERITE("netherite", Material.NETHERITE_BOOTS, "Netherite", null),
+    DIAMOND("diamond", Material.DIAMOND_BOOTS, "Diamond", null),
+    CHAINMAIL("chainmail", Material.CHAINMAIL_BOOTS, "Chainmail", null),
+    LEATHER_WHITE("leather_white", Material.LEATHER_BOOTS, "Leather White", Color.WHITE),
+    LEATHER_BLACK("leather_black", Material.LEATHER_BOOTS, "Leather Black", Color.BLACK),
+    LEATHER_RED("leather_red", Material.LEATHER_BOOTS, "Leather Red", Color.RED),
+    LEATHER_BLUE("leather_blue", Material.LEATHER_BOOTS, "Leather Blue", Color.BLUE),
+    LEATHER_GREEN("leather_green", Material.LEATHER_BOOTS, "Leather Green", Color.GREEN),
+    LEATHER_YELLOW("leather_yellow", Material.LEATHER_BOOTS, "Leather Yellow", Color.YELLOW),
+    LEATHER_ORANGE("leather_orange", Material.LEATHER_BOOTS, "Leather Orange", Color.ORANGE),
+    LEATHER_PURPLE("leather_purple", Material.LEATHER_BOOTS, "Leather Purple", Color.PURPLE),
+    LEATHER_PINK("leather_pink", Material.LEATHER_BOOTS, "Leather Pink", Color.FUCHSIA),
+    LEATHER_CYAN("leather_cyan", Material.LEATHER_BOOTS, "Leather Cyan", Color.AQUA);
+
+    public final String key;
+    public final Material material;
+    public final String fancyName;
+    public final Color leatherColor;
+
+    GoaliePadType(String key, Material material, String fancyName, Color leatherColor) {
+      this.key = key;
+      this.material = material;
+      this.fancyName = fancyName;
+      this.leatherColor = leatherColor;
+    }
+
+    public static GoaliePadType fromKey(String key) {
+      for (GoaliePadType type : values()) {
+        if (type.key.equalsIgnoreCase(key)) {
+          return type;
+        }
+      }
+      return IRON;
     }
   }
 }
