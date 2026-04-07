@@ -67,7 +67,7 @@ public class PlayerHockeyListener implements Listener {
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
   private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.82;
   private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.58;
-  private static final double DANGLE_LEVEL_ONE_PLAYER_SLIDE_MULTIPLIER = 0.50;
+  private static final double SHIFT_LIFT_Y_HARD_CAP = 0.62;
   private static final double SHIFT_LIFT_BASE_Y = 0.52;
   private static final double SHIFT_LIFT_SCALE_Y = 0.30;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
@@ -88,6 +88,7 @@ public class PlayerHockeyListener implements Listener {
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> shiftLiftHitCooldownMillis = new HashMap<>();
+  private final Map<UUID, Long> recentShotOnTargetCreditMillis = new HashMap<>();
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
@@ -496,7 +497,8 @@ public class PlayerHockeyListener implements Listener {
 
         double basePop = 0.07 + (hitLevel * 0.03);
         if (shiftLift) {
-          boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+          boosted.setY(getPuckLiftY(slime, existingVelocity.getY(), basePop, getShiftLift(charge)));
+          boosted.setY(Math.min(boosted.getY(), SHIFT_LIFT_Y_HARD_CAP));
         } else if (hitLevel >= 2) {
           boosted.setY(Math.max(existingVelocity.getY(), basePop));
         }
@@ -514,16 +516,10 @@ public class PlayerHockeyListener implements Listener {
         }
         double sideDot = toPuck.dot(right);
         Vector sideShuffle = sideDot < 0 ? right.clone() : right.clone().multiply(-1);
-        Vector puckDirection = updatedVelocity.clone().setY(0);
-        if (puckDirection.lengthSquared() > 0.0001) {
-          sideShuffle = puckDirection.normalize();
-        }
         sideShuffle.multiply(DANGLE_LEVEL_ONE_SLIDE_STRENGTH);
         sideShuffle.setY(0.0);
         slime.setVelocity(sideShuffle);
-        Vector playerSlide = sideShuffle.clone().multiply(DANGLE_LEVEL_ONE_PLAYER_SLIDE_MULTIPLIER);
-        playerSlide.setY(0.0);
-        player.setVelocity(playerSlide);
+        player.setVelocity(sideShuffle.clone());
         if (player.isSneaking()) {
           this.shiftLiftHitCooldownMillis.put(player.getUniqueId(), nowMillis() + SHIFT_LIFT_HIT_COOLDOWN_MS);
         }
@@ -537,7 +533,12 @@ public class PlayerHockeyListener implements Listener {
         if (pull.lengthSquared() < 0.06) {
           pull = backward;
         }
-        pull.setY(shiftLift ? getShiftLift(charge) : 0.0);
+        if (shiftLift) {
+          pull.setY(getPuckLiftY(slime, updatedVelocity.getY(), 0.10, getShiftLift(charge)));
+          pull.setY(Math.min(pull.getY(), SHIFT_LIFT_Y_HARD_CAP));
+        } else {
+          pull.setY(0.0);
+        }
         slime.setVelocity(pull);
         return;
       }
@@ -555,7 +556,8 @@ public class PlayerHockeyListener implements Listener {
       Vector boosted = horizontalMomentum.clone().add(shotDirection.multiply(1.15));
       double basePop = 0.07 + (hitLevel * 0.03);
       if (shiftLift) {
-        boosted.setY(Math.max(Math.max(existingVelocity.getY(), basePop), getShiftLift(charge)));
+        boosted.setY(getPuckLiftY(slime, existingVelocity.getY(), basePop, getShiftLift(charge)));
+        boosted.setY(Math.min(boosted.getY(), SHIFT_LIFT_Y_HARD_CAP));
       } else {
         boosted.setY(Math.max(existingVelocity.getY(), basePop));
       }
@@ -828,6 +830,7 @@ public class PlayerHockeyListener implements Listener {
     this.lastPuckVelocity.keySet().retainAll(livePucks);
     this.recentGoalieBounceMillis.keySet().retainAll(livePucks);
     this.recentGoalieBouncePlayer.keySet().retainAll(livePucks);
+    this.recentShotOnTargetCreditMillis.keySet().retainAll(livePucks);
     this.goalieGloveReleaseCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 5000L);
     this.playerHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 1000L);
     this.shiftLiftHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue());
@@ -1256,6 +1259,13 @@ public class PlayerHockeyListener implements Listener {
     if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
       return;
     }
+    UUID slimeId = slime.getUniqueId();
+    long now = nowMillis();
+    long recentCredit = this.recentShotOnTargetCreditMillis.getOrDefault(slimeId, 0L);
+    if (now - recentCredit < 700L) {
+      return;
+    }
+
     Location target = team.equalsIgnoreCase("home") ? rink.getAwayGoalCenter() : rink.getHomeGoalCenter();
     Location ownGoal = team.equalsIgnoreCase("home") ? rink.getHomeGoalCenter() : rink.getAwayGoalCenter();
 
@@ -1273,11 +1283,11 @@ public class PlayerHockeyListener implements Listener {
     Vector shotDirection = shotVelocity.clone().normalize();
     Vector towardOwnGoal = ownGoal.toVector().subtract(puckLoc.toVector()).setY(0);
     if (towardOwnGoal.lengthSquared() > 0.01
-            && shotDirection.dot(towardOwnGoal.normalize()) > 0.88) {
+            && shotDirection.dot(towardOwnGoal.normalize()) > 0.86) {
       return;
     }
     Vector goalDirection = towardGoal.clone().normalize();
-    if (shotDirection.dot(goalDirection) < 0.88) {
+    if (shotDirection.dot(goalDirection) < 0.78) {
       return;
     }
 
@@ -1293,7 +1303,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       double projectedZ = puckLoc.getZ() + velocityZ * t;
-      if (Math.abs(projectedZ - target.getZ()) > 2.9) {
+      if (Math.abs(projectedZ - target.getZ()) > 4.1) {
         return;
       }
     } else {
@@ -1305,7 +1315,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       double projectedX = puckLoc.getX() + velocityX * t;
-      if (Math.abs(projectedX - target.getX()) > 2.9) {
+      if (Math.abs(projectedX - target.getX()) > 4.1) {
         return;
       }
     }
@@ -1315,6 +1325,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
+    this.recentShotOnTargetCreditMillis.put(slimeId, now);
     rink.addShotOnTarget(shooter);
   }
 
@@ -1455,6 +1466,10 @@ public class PlayerHockeyListener implements Listener {
       e.setCancelled(true);
       return;
     }
+    if (!isOnIceSurface(damager) || !isOnIceSurface(damaged)) {
+      e.setCancelled(true);
+      return;
+    }
     long now = System.currentTimeMillis();
     long hitCooldownEnd = this.playerHitCooldownMillis.getOrDefault(damager.getUniqueId(), 0L);
     if (now < hitCooldownEnd) {
@@ -1496,6 +1511,12 @@ public class PlayerHockeyListener implements Listener {
     damaged.getWorld().playSound(damaged.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1f, 0.9f + (hitLevel * 0.07f));
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
     damager.sendMessage("§6[§bBH§6] §aYou hit §f" + damaged.getName() + " §7-> Power " + hitLevel);
+  }
+
+  private boolean isOnIceSurface(Player player) {
+    Location location = player.getLocation();
+    Block blockBelow = location.clone().add(0, -0.1, 0).getBlock();
+    return ICE_SURFACES.contains(blockBelow.getType());
   }
 
   private void maybeCreditGoalieSave(Player goalie, Slime slime, Vector incomingVelocity) {

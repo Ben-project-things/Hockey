@@ -289,8 +289,17 @@ public abstract class AbstractGame implements Game {
             : this.rink.getAwayTeamName();
     if (gc.isOwnGoal()) {
       String scorerName = gc.getScorer() != null ? gc.getScorer().getName() : "Unknown";
+      String scorerColor = teamColor;
+      if (gc.getScorer() != null) {
+        String scorerTeam = this.rink.getTeam(gc.getScorer());
+        if ("home".equalsIgnoreCase(scorerTeam)) {
+          scorerColor = "c";
+        } else if ("away".equalsIgnoreCase(scorerTeam)) {
+          scorerColor = "9";
+        }
+      }
       title = "§" + teamColor + scoringTeamName + " GOAL";
-      subtitle = "§7Scored by: §" + teamColor + scorerName + " §8(Own Goal)";
+      subtitle = "§7Scored by: §" + scorerColor + scorerName + " §8(Own Goal)";
     } else {
       title = "§" + teamColor + scoringTeamName + " GOAL";
       subtitle = buildGoalSubtitle(teamColor, gc);
@@ -516,6 +525,12 @@ public abstract class AbstractGame implements Game {
     if (homePenalties == awayPenalties && homePenalties > 0) {
       int remaining = Math.min(homeSoonest, awaySoonest);
       return "§eEven Strength: §f" + formatTime(remaining);
+    }
+    if (homePenalties > awayPenalties) {
+      return "§9Power Play: §f" + formatTime(homeSoonest);
+    }
+    if (awayPenalties > homePenalties) {
+      return "§cPower Play: §f" + formatTime(awaySoonest);
     }
     return "";
   }

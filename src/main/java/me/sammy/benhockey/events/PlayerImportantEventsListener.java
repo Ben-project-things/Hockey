@@ -23,6 +23,7 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import me.sammy.benhockey.game.Rink;
@@ -431,6 +432,7 @@ public class PlayerImportantEventsListener implements Listener {
     ItemStack item = new ItemStack(material);
     ItemMeta meta = item.getItemMeta();
     meta.setDisplayName(name);
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
     item.setItemMeta(meta);
     return item;
   }
