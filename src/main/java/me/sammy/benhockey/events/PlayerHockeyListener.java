@@ -68,9 +68,9 @@ public class PlayerHockeyListener implements Listener {
   private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
   private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.5;
-  private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.58;
-  private static final double SHIFT_LIFT_Y_HARD_CAP = 1.0;
-  private static final double SHIFT_LIFT_BASE_Y = 0.8;
+  private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.55;
+  private static final double SHIFT_LIFT_Y_HARD_CAP = 0.8;
+  private static final double SHIFT_LIFT_BASE_Y = 0.6;
   private static final double SHIFT_LIFT_SCALE_Y = 0.25;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private final LobbyManager lobbyManager;
