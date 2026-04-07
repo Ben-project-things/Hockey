@@ -244,12 +244,16 @@ public class CosmeticsManager {
     CLOUD("cloud", Particle.CLOUD, Material.WHITE_WOOL, "Cloud", 1, 0, 0, 0, 0),
     RED("red", Particle.REDSTONE, Material.RED_WOOL, "Red", 4, 0.08, 0.08, 0.08, 0.01,
             new Particle.DustOptions(Color.RED, 1.3f), null),
-    GREEN("green", Particle.VILLAGER_HAPPY, Material.GREEN_WOOL, "Green", 2, 0.1, 0.1, 0.1, 0),
-    ORANGE("orange", Particle.FLAME, Material.ORANGE_WOOL, "Orange", 2, 0, 0, 0, 0),
-    YELLOW("yellow", Particle.END_ROD, Material.YELLOW_WOOL, "Yellow", 1, 0, 0, 0, 0),
-    BLUE("blue", Particle.WATER_SPLASH, Material.BLUE_WOOL, "Blue", 2, 0.1, 0.1, 0.1, 0),
-    INDIGO("indigo", Particle.DRAGON_BREATH, Material.PURPLE_WOOL, "Indigo", 1, 0, 0, 0, 0),
-    VIOLET("violet", Particle.ENCHANTMENT_TABLE, Material.MAGENTA_WOOL, "Violet", 3, 0.1, 0.1, 0.1, 0);
+    GREEN("green", Particle.REDSTONE, Material.GREEN_WOOL, "Green", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.GREEN, 1.3f), null),
+    ORANGE("orange", Particle.REDSTONE, Material.ORANGE_WOOL, "Orange", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.ORANGE, 1.3f), null),
+    YELLOW("yellow", Particle.REDSTONE, Material.YELLOW_WOOL, "Yellow", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.YELLOW, 1.3f), null),
+    BLUE("blue", Particle.REDSTONE, Material.BLUE_WOOL, "Blue", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.BLUE, 1.3f), null),
+    INDIGO("indigo", Particle.REDSTONE, Material.PURPLE_WOOL, "Indigo", 4, 0.08, 0.08, 0.08, 0.01,
+            new Particle.DustOptions(Color.PURPLE, 1.3f), null);
 
     public final String key;
     public final Particle particle;
