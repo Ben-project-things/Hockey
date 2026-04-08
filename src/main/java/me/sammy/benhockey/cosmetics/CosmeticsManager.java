@@ -25,6 +25,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -522,7 +523,12 @@ public class CosmeticsManager {
       return;
     }
     LivingEntity living = (LivingEntity) entity;
-    living.setAI(false);
+    if (living instanceof Mob) {
+      Mob mob = (Mob) living;
+      mob.setAI(true);
+      mob.setAware(false);
+      mob.setTarget(null);
+    }
     living.setInvulnerable(true);
     living.setSilent(true);
     living.setCollidable(false);
