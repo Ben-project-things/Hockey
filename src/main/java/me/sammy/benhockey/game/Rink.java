@@ -47,6 +47,9 @@ public class Rink {
   private final Set<Player> awayTeam = new HashSet<>();
   private final Set<Player> goalies = new HashSet<>();
   private final Map<UUID, Slime> personalPucks = new HashMap<>();
+  private final Set<UUID> glovedGoalies = new HashSet<>();
+  private final Set<UUID> dangleModePlayers = new HashSet<>();
+  private final Map<UUID, Long> recentShotOnTargetCreditMillis = new HashMap<>();
   private Set<Player> fightingPlayers;
   private boolean allowHits = false;
   private boolean teamLocked = false;
@@ -363,8 +366,42 @@ public class Rink {
     refs.remove(p);
     homeTeam.remove(p);
     awayTeam.remove(p);
+    this.glovedGoalies.remove(p.getUniqueId());
+    this.dangleModePlayers.remove(p.getUniqueId());
     this.removePersonalPuck(p);
     this.scoreboard.hideFromPlayer(p);
+  }
+
+  public Set<UUID> getGlovedGoalies() {
+    return this.glovedGoalies;
+  }
+
+  public boolean isGlovedGoalie(UUID playerId) {
+    return this.glovedGoalies.contains(playerId);
+  }
+
+  public void setGoalieGloved(UUID playerId, boolean gloved) {
+    if (gloved) {
+      this.glovedGoalies.add(playerId);
+    } else {
+      this.glovedGoalies.remove(playerId);
+    }
+  }
+
+  public boolean isDangleModePlayer(UUID playerId) {
+    return this.dangleModePlayers.contains(playerId);
+  }
+
+  public void setPlayerDangleMode(UUID playerId, boolean enabled) {
+    if (enabled) {
+      this.dangleModePlayers.add(playerId);
+    } else {
+      this.dangleModePlayers.remove(playerId);
+    }
+  }
+
+  public void retainPuckScopedState(Set<UUID> livePuckIds) {
+    this.recentShotOnTargetCreditMillis.keySet().retainAll(livePuckIds);
   }
 
   /**
@@ -1066,7 +1103,8 @@ public class Rink {
       if (this.getGameState() == GameState.GAME
               && this.dangleModePlayers.contains(player.getUniqueId())
               && !hasPossession) {
-        setDangleMode(player, false);
+        this.setPlayerDangleMode(player.getUniqueId(), false);
+        player.removePotionEffect(PotionEffectType.POISON);
       }
     }
   }

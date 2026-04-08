@@ -93,7 +93,6 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Integer> goalieSlideCooldownTicks = new HashMap<>();
   private final Map<UUID, Slime> goalieGloveSlime = new HashMap<>();
   private final Map<UUID, BukkitTask> gloveTimers = new HashMap<>();
-  private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Map<UUID, Long> recentGoalieBounceMillis = new HashMap<>();
   private final Map<UUID, UUID> recentGoalieBouncePlayer = new HashMap<>();
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
@@ -101,10 +100,8 @@ public class PlayerHockeyListener implements Listener {
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
-  private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> shiftLiftHitCooldownMillis = new HashMap<>();
-  private final Map<UUID, Long> recentShotOnTargetCreditMillis = new HashMap<>();
   private final Map<UUID, Long> suppressGroundBounceUntilMillis = new HashMap<>();
   private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
   private final Map<UUID, UUID> goalieOwnHitNoGlovePlayer = new HashMap<>();
@@ -126,9 +123,13 @@ public class PlayerHockeyListener implements Listener {
 
   @EventHandler
   public void onPlayerLeave(PlayerQuitEvent e) {
+    Rink rink = this.lobbyManager.getPlayerRink(e.getPlayer());
     this.charges.remove(e.getPlayer().getUniqueId());
     this.goalieSlideCooldownTicks.remove(e.getPlayer().getUniqueId());
-    this.dangleModePlayers.remove(e.getPlayer().getUniqueId());
+    if (rink != null) {
+      rink.setPlayerDangleMode(e.getPlayer().getUniqueId(), false);
+      rink.setGoalieGloved(e.getPlayer().getUniqueId(), false);
+    }
     this.shiftLiftHitCooldownMillis.remove(e.getPlayer().getUniqueId());
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
@@ -140,7 +141,11 @@ public class PlayerHockeyListener implements Listener {
   public void onPlayerJoin(PlayerJoinEvent e) {
     Player player = e.getPlayer();
     UUID playerId = player.getUniqueId();
-    this.dangleModePlayers.remove(playerId);
+    Rink rink = this.lobbyManager.getPlayerRink(player);
+    if (rink != null) {
+      rink.setPlayerDangleMode(playerId, false);
+      rink.setGoalieGloved(playerId, false);
+    }
     this.charges.remove(playerId);
     this.shiftLiftHitCooldownMillis.remove(playerId);
     player.removePotionEffect(PotionEffectType.POISON);
@@ -160,7 +165,7 @@ public class PlayerHockeyListener implements Listener {
     Player player = e.getPlayer();
     String message = e.getMessage().toLowerCase();
     if (message.startsWith("/join") || message.startsWith("/team") || message.startsWith("/goalie")) {
-      setDangleMode(player, false);
+      setDangleMode(player, this.lobbyManager.getPlayerRink(player), false);
       this.resetPower(player);
     }
   }
@@ -343,7 +348,8 @@ public class PlayerHockeyListener implements Listener {
       meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_SPEED);
 
       double attackSpeed = (newLevel == 3) ? -0.5 : 2.5;
-      if (this.dangleModePlayers.contains(uuid) && newLevel == 1) {
+      Rink rink = this.lobbyManager.getPlayerRink(player);
+      if (rink != null && rink.isDangleModePlayer(uuid) && newLevel == 1) {
         attackSpeed = 10.0;
       }
       AttributeModifier attackSpeedModifier = new AttributeModifier(
@@ -401,8 +407,10 @@ public class PlayerHockeyListener implements Listener {
     UUID playerId = player.getUniqueId();
     ItemStack droppedItem = e.getItemDrop().getItemStack();
 
+    Rink rink = this.lobbyManager.getPlayerRink(player);
     if (lobbyManager.isPlayerAKeeper(player)
-            && this.glovedGoalies.contains(playerId)
+            && rink != null
+            && rink.isGlovedGoalie(playerId)
             && ((droppedItem.getType() == Material.SLIME_BALL
             && droppedItem.hasItemMeta()
             && droppedItem.getItemMeta() != null
@@ -425,7 +433,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    Rink rink = this.lobbyManager.getPlayerRink(player);
+    rink = this.lobbyManager.getPlayerRink(player);
     if (rink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
       return;
     }
@@ -436,7 +444,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    setDangleMode(player, !this.dangleModePlayers.contains(playerId));
+    setDangleMode(player, rink, !rink.isDangleModePlayer(playerId));
   }
 
   /**
@@ -492,7 +500,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     boolean firstFaceoffTouch = playerRink.consumeFaceoffFirstTouch();
-    boolean dangleMode = this.dangleModePlayers.contains(player.getUniqueId());
+    boolean dangleMode = playerRink.isDangleModePlayer(player.getUniqueId());
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
 
     playerRink.addPlayerLastHit(player);
@@ -665,10 +673,14 @@ public class PlayerHockeyListener implements Listener {
   private void handleGoalieGlove(Player goalie, Slime puck) {
     UUID goalieId = goalie.getUniqueId();
     clearGoalieGloveState(goalieId);
+    Rink rink = this.lobbyManager.getPlayerRink(goalie);
+    if (rink == null) {
+      return;
+    }
 
     Location puckLoc = puck.getLocation();
     this.goalieGloveSlime.put(goalieId, puck);
-    this.glovedGoalies.add(goalieId);
+    rink.setGoalieGloved(goalieId, true);
     puck.setVelocity(new Vector(0, 0, 0));
     Location stash = puck.getLocation().clone().add(0, -25, 0);
     puck.teleport(stash);
@@ -688,7 +700,8 @@ public class PlayerHockeyListener implements Listener {
         }
 
         if (ticksLeft <= 0) {
-          if (glovedGoalies.contains(goalieId)) {
+          Rink currentRink = PlayerHockeyListener.this.lobbyManager.getPlayerRink(goalie);
+          if (currentRink != null && currentRink.isGlovedGoalie(goalieId)) {
             dropGlovedPuck(goalie);
             this.cancel();
             return;
@@ -725,7 +738,10 @@ public class PlayerHockeyListener implements Listener {
 
     puck.teleport(drop);
     puck.setRotation(0f, 0f);
-    glovedGoalies.remove(id);
+    Rink rink = this.lobbyManager.getPlayerRink(goalie);
+    if (rink != null) {
+      rink.setGoalieGloved(id, false);
+    }
     updateGoalieGloveIndicator(goalie, false);
     goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
 
@@ -743,9 +759,18 @@ public class PlayerHockeyListener implements Listener {
       existingTimer.cancel();
     }
 
-    this.glovedGoalies.remove(goalieId);
-    this.goalieGloveSlime.remove(goalieId);
     Player goalie = Bukkit.getPlayer(goalieId);
+    if (goalie != null) {
+      Rink rink = this.lobbyManager.getPlayerRink(goalie);
+      if (rink != null) {
+        rink.setGoalieGloved(goalieId, false);
+      }
+    } else {
+      for (Rink rink : this.lobbyManager.getRinks()) {
+        rink.setGoalieGloved(goalieId, false);
+      }
+    }
+    this.goalieGloveSlime.remove(goalieId);
     if (goalie != null) {
       updateGoalieGloveIndicator(goalie, false);
       goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
@@ -809,7 +834,8 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Player player = (Player) e.getEntity();
-    if (this.dangleModePlayers.contains(player.getUniqueId())) {
+    Rink rink = this.lobbyManager.getPlayerRink(player);
+    if (rink != null && rink.isDangleModePlayer(player.getUniqueId())) {
       e.setCancelled(true);
     }
   }
@@ -831,7 +857,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     if (isHockeyStick(item)) {
-      setDangleMode(player, false);
+      setDangleMode(player, this.lobbyManager.getPlayerRink(player), false);
 
       player.setLevel(1);
       updateHitLevelEffects(player, 1);
@@ -919,39 +945,43 @@ public class PlayerHockeyListener implements Listener {
     this.lastPuckVelocity.keySet().retainAll(livePucks);
     this.recentGoalieBounceMillis.keySet().retainAll(livePucks);
     this.recentGoalieBouncePlayer.keySet().retainAll(livePucks);
-    this.recentShotOnTargetCreditMillis.keySet().retainAll(livePucks);
     this.suppressGroundBounceUntilMillis.keySet().retainAll(livePucks);
     this.goalieOwnHitNoGloveUntilMillis.keySet().retainAll(livePucks);
     this.goalieOwnHitNoGlovePlayer.keySet().retainAll(livePucks);
     this.goalieGloveReleaseCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 5000L);
     this.playerHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 1000L);
     this.shiftLiftHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue());
+    for (Rink rink : this.lobbyManager.getRinks()) {
+      rink.retainPuckScopedState(livePucks);
+    }
 
-    for (UUID uuid : new HashSet<>(this.glovedGoalies)) {
-      Player goalie = this.plugin.getServer().getPlayer(uuid);
-      if (goalie == null || !goalie.isOnline()) {
-        clearGoalieGloveState(uuid);
-        continue;
-      }
+    for (Rink rink : this.lobbyManager.getRinks()) {
+      for (UUID uuid : new HashSet<>(rink.getGlovedGoalies())) {
+        Player goalie = this.plugin.getServer().getPlayer(uuid);
+        if (goalie == null || !goalie.isOnline()) {
+          clearGoalieGloveState(uuid);
+          continue;
+        }
 
-      if (this.lobbyManager.isPlayerInLobby(goalie) || this.lobbyManager.getPlayerRink(goalie) == null) {
-        clearGoalieGloveState(uuid);
-        continue;
-      }
+        Rink goalieRink = this.lobbyManager.getPlayerRink(goalie);
+        if (this.lobbyManager.isPlayerInLobby(goalie) || goalieRink == null || goalieRink != rink) {
+          clearGoalieGloveState(uuid);
+          continue;
+        }
 
-      Rink rink = this.lobbyManager.getPlayerRink(goalie);
-      if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
-        continue;
-      }
+        if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
+          continue;
+        }
 
-      Location goalieBlock = goalie.getLocation().getBlock().getLocation();
-      if (rink.getHomeGoalZone().contains(goalieBlock)) {
-        clearGoalieGloveState(uuid);
-        rink.forceGoal("away");
-      }
-      else if (rink.getAwayGoalZone().contains(goalieBlock)) {
-        clearGoalieGloveState(uuid);
-        rink.forceGoal("home");
+        Location goalieBlock = goalie.getLocation().getBlock().getLocation();
+        if (rink.getHomeGoalZone().contains(goalieBlock)) {
+          clearGoalieGloveState(uuid);
+          rink.forceGoal("away");
+        }
+        else if (rink.getAwayGoalZone().contains(goalieBlock)) {
+          clearGoalieGloveState(uuid);
+          rink.forceGoal("home");
+        }
       }
     }
 
@@ -1143,20 +1173,25 @@ public class PlayerHockeyListener implements Listener {
     player.setExp(0.0f);
   }
 
-  private void setDangleMode(Player player, boolean enabled) {
+  private void setDangleMode(Player player, Rink rink, boolean enabled) {
+    if (rink == null) {
+      return;
+    }
     UUID playerId = player.getUniqueId();
     if (enabled) {
-      if (!this.dangleModePlayers.add(playerId)) {
+      if (rink.isDangleModePlayer(playerId)) {
         return;
       }
+      rink.setPlayerDangleMode(playerId, true);
       player.addPotionEffect(new PotionEffect(PotionEffectType.POISON, Integer.MAX_VALUE, 0, false, false, false));
       player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.2f);
       return;
     }
 
-    if (!this.dangleModePlayers.remove(playerId)) {
+    if (!rink.isDangleModePlayer(playerId)) {
       return;
     }
+    rink.setPlayerDangleMode(playerId, false);
     player.removePotionEffect(PotionEffectType.POISON);
     player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.0f);
   }
