@@ -577,7 +577,6 @@ public class Rink {
     return this.awayGoalCenter;
   }
 
-  //TODO Change later for when different types of games.
   /**
    * Starts the game.
    */
@@ -1252,7 +1251,6 @@ public class Rink {
   public void setSpectatorCamera(ArmorStand spectatorCamera) {
     this.spectatorCamera = spectatorCamera;
   }
-
 
   public void updateSpectatorCameraForRink() {
     ArmorStand camera = this.spectatorCamera;

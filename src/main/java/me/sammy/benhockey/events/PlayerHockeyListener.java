@@ -110,8 +110,7 @@ public class PlayerHockeyListener implements Listener {
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
-  private static final String POSSESSION_YES = "§aYour team has possession";
-  private static final String POSSESSION_NO = "§cYour team does not have possession";
+
   private static final Set<Material> ICE_SURFACES = new HashSet<Material>(
           Arrays.asList(Material.ICE, Material.BLUE_ICE, Material.PACKED_ICE)
   );
