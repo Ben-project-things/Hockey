@@ -266,6 +266,8 @@ public abstract class AbstractGame implements Game {
       this.mostRecentGoalScorerId = null;
     }
 
+    endSinglePenaltyForConcedingTeam(scoringTeam);
+
     if (gc.isOwnGoal()) {
       String ownGoalTeam = this.rink.getTeam(gc.getScorer());
       for (int i = 1; i < this.lastHits.size(); i++) {
@@ -331,6 +333,33 @@ public abstract class AbstractGame implements Game {
     } else {
       this.intermissionLabel = "Faceoff";
       runAfterDelay(10, this::startFaceoff);
+    }
+  }
+
+  private void endSinglePenaltyForConcedingTeam(String scoringTeam) {
+    String concedingTeam = "home".equalsIgnoreCase(scoringTeam) ? "away" : "home";
+    UUID penaltyToEnd = null;
+    int shortestRemaining = Integer.MAX_VALUE;
+
+    for (Map.Entry<UUID, Integer> entry : this.activePenalties.entrySet()) {
+      Player penalizedPlayer = Bukkit.getPlayer(entry.getKey());
+      if (penalizedPlayer == null) {
+        continue;
+      }
+
+      String team = this.rink.getTeam(penalizedPlayer);
+      if (!concedingTeam.equalsIgnoreCase(team)) {
+        continue;
+      }
+
+      if (entry.getValue() < shortestRemaining) {
+        shortestRemaining = entry.getValue();
+        penaltyToEnd = entry.getKey();
+      }
+    }
+
+    if (penaltyToEnd != null) {
+      endPenalty(penaltyToEnd);
     }
   }
 
@@ -1068,5 +1097,10 @@ public abstract class AbstractGame implements Game {
   @Override
   public boolean isFaceoffCountdownActive() {
     return this.faceoffCountdownActive;
+  }
+
+  @Override
+  public boolean isPaused() {
+    return this.gamePaused;
   }
 }

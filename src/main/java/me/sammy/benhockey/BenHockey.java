@@ -43,6 +43,7 @@ public final class BenHockey extends JavaPlugin {
 
         registerCommands(new String[]{"rink", "join", "team", "goalie", "leave", "goalie", "stats", "puck",
                         "startgame", "pregame", "endgame", "togglehitting", "whistle", "penalty",
+                        "startfight", "acceptfight", "declinefight", "endfight",
                         "lockteams", "setteamname", "fo", "settime", "bench", "createrink", "setgoal",
                         "cancelrink", "deleterink", "help", "cosmetics", "broadcast"},
                 new GameCommands(this.lobbyManager));
@@ -52,6 +53,7 @@ public final class BenHockey extends JavaPlugin {
         getCommand("rink").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("setgoal").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("penalty").setTabCompleter(new MyTabCompleter(lobbyManager));
+        getCommand("startfight").setTabCompleter(new MyTabCompleter(lobbyManager));
         getCommand("setteamname").setTabCompleter(new MyTabCompleter(lobbyManager));
 
         getLogger().info("Ben Hockey plugin has been enabled!");

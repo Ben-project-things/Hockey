@@ -168,4 +168,10 @@ public interface Game {
    * @return true when the faceoff countdown is active
    */
   boolean isFaceoffCountdownActive();
+
+  /**
+   * Returns whether the game is currently paused by a whistle.
+   * @return true when paused
+   */
+  boolean isPaused();
 }
