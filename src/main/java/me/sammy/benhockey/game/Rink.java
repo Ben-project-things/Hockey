@@ -1426,11 +1426,28 @@ public class Rink {
 
   public ArmorStand ensureSpectatorCamera() {
     ArmorStand camera = this.spectatorCamera;
-    if (camera == null || !camera.isValid()) {
-      this.spectatorCamera = spawnRinkCamera();
-      camera = this.spectatorCamera;
+    if (camera != null && camera.isValid()) {
+      return camera;
     }
-    return camera;
+
+    Location cameraSpawn = getSpectatorCameraSpawnLocation();
+    if (cameraSpawn.getWorld() == null) {
+      return null;
+    }
+
+    if (!cameraSpawn.getChunk().isLoaded()) {
+      this.spectatorCamera = null;
+      return null;
+    }
+
+    ArmorStand existingCamera = findExistingRinkCamera(cameraSpawn);
+    if (existingCamera != null) {
+      this.spectatorCamera = existingCamera;
+      return existingCamera;
+    }
+
+    this.spectatorCamera = spawnRinkCamera();
+    return this.spectatorCamera;
   }
 
   public Location getFanSpawnLocation() {
@@ -1566,6 +1583,25 @@ public class Rink {
     armorStand.addScoreboardTag(CAMERA_TAG);
     armorStand.addScoreboardTag(this.name);
     return armorStand;
+  }
+
+  private ArmorStand findExistingRinkCamera(Location cameraSpawn) {
+    for (org.bukkit.entity.Entity entity : cameraSpawn.getChunk().getEntities()) {
+      if (!(entity instanceof ArmorStand stand)) {
+        continue;
+      }
+      if (!stand.isValid()) {
+        continue;
+      }
+      if (!stand.getScoreboardTags().contains(CAMERA_TAG)) {
+        continue;
+      }
+      if (!stand.getScoreboardTags().contains(this.name)) {
+        continue;
+      }
+      return stand;
+    }
+    return null;
   }
 
   public void enforceGoalieHalfLineRule() {
