@@ -1587,9 +1587,10 @@ public class Rink {
 
   private ArmorStand findExistingRinkCamera(Location cameraSpawn) {
     for (org.bukkit.entity.Entity entity : cameraSpawn.getChunk().getEntities()) {
-      if (!(entity instanceof ArmorStand stand)) {
+      if (!(entity instanceof ArmorStand)) {
         continue;
       }
+      ArmorStand stand = (ArmorStand) entity;
       if (!stand.isValid()) {
         continue;
       }
