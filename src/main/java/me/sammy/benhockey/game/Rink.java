@@ -1,11 +1,15 @@
 package me.sammy.benhockey.game;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
@@ -62,6 +66,9 @@ public class Rink {
   private final List<Location> awayGoalZone;
   private final Location penaltyBox;
 
+  private static final String POSSESSION_YES = "§aYour team has possession";
+  private static final String POSSESSION_NO = "§cYour team does not have possession";
+
 
   /**
    * Constructor for setting up positions of the rink.
@@ -88,7 +95,14 @@ public class Rink {
     this.state = GameState.PREGAME;
     this.scoreboard = new GameScoreboard(this);
     this.spectatorFocusPlayerId = null;
-    this.spectatorCamera = null;
+    this.spectatorCamera = createRinkCamera();
+  }
+
+  /**
+   * Method to get current time.
+   */
+  private long nowMillis() {
+    return System.currentTimeMillis();
   }
 
   /**
@@ -100,6 +114,7 @@ public class Rink {
   Inventory inventory = p.getInventory();
   inventory.clear();
   p.setGameMode(GameMode.SPECTATOR);
+  p.setSpectatorTarget(this.spectatorCamera);
 
   this.scoreboard.showToPlayer(p);
   p.teleport(new Location(p.getWorld(), centerIce.getX(), centerIce.getY() + 7, centerIce.getZ()));
@@ -966,6 +981,220 @@ public class Rink {
     this.game.forceGoal(scoringTeam);
   }
 
+  public boolean handleBenchBarrierInteract(Player player, Location barrier) {
+    String team = this.getTeam(player);
+    Location teamBench = null;
+    if ("home".equalsIgnoreCase(team)) {
+      teamBench = this.homeBench;
+    } else if ("away".equalsIgnoreCase(team)) {
+      teamBench = this.awayBench;
+    }
+    if (teamBench == null) {
+      return false;
+    }
+
+    if (!barrier.getWorld().equals(teamBench.getWorld()) || barrier.distanceSquared(teamBench) > 25.0) {
+      return false;
+    }
+
+    Location destination;
+    if (player.getLocation().distanceSquared(teamBench) <= 6.25) {
+      Vector toCenter = this.centerIce.toVector().subtract(teamBench.toVector()).setY(0);
+      if (toCenter.lengthSquared() < 0.0001) {
+        toCenter = player.getLocation().getDirection().setY(0);
+      }
+      if (toCenter.lengthSquared() < 0.0001) {
+        toCenter = new Vector(0, 0, 1);
+      }
+      toCenter.normalize();
+      destination = findSafeBenchExit(teamBench, toCenter);
+    } else {
+      destination = teamBench.clone().add(0, 0.1, 0);
+    }
+
+    destination.setX(destination.getBlockX() + 0.5);
+    destination.setZ(destination.getBlockZ() + 0.5);
+    destination.setYaw(player.getLocation().getYaw());
+    destination.setPitch(player.getLocation().getPitch());
+    player.setNoDamageTicks(20);
+    player.setFallDistance(0f);
+    player.teleport(destination);
+    return true;
+  }
+
+  private Location findSafeBenchExit(Location teamBench, Vector toCenter) {
+    Vector direction = toCenter.clone();
+    if (direction.lengthSquared() < 0.0001) {
+      direction = new Vector(0, 0, 1);
+    }
+    direction.normalize();
+
+    for (double distance = 4.0; distance <= 6.0; distance += 0.5) {
+      Location attempt = teamBench.clone().add(direction.clone().multiply(distance)).add(0, 0.1, 0);
+      Block feet = attempt.getBlock();
+      Block head = feet.getRelative(BlockFace.UP);
+      if (feet.isPassable() && head.isPassable()) {
+        return attempt;
+      }
+    }
+
+    return teamBench.clone().add(direction.multiply(4.5)).add(0, 0.1, 0);
+  }
+
+  public void updatePossessionIndicators() {
+    for (Player player : this.getAllPlayers()) {
+      if (this.getTeam(player).equals("away") || this.getTeam(player).equals("home")) {
+        continue;
+      }
+
+      boolean hasPossession = this.hasPossession(player);
+      if (this.getGameState() == GameState.GAME) {
+        ItemStack indicator = new ItemStack(hasPossession ? Material.LIME_DYE : Material.RED_DYE);
+        ItemMeta meta = indicator.getItemMeta();
+        if (meta != null) {
+          meta.setDisplayName(hasPossession ? POSSESSION_YES : POSSESSION_NO);
+          indicator.setItemMeta(meta);
+        }
+        player.getInventory().setItem(4, indicator);
+      } else {
+        ItemStack slotItem = player.getInventory().getItem(4);
+        if (slotItem != null && (slotItem.getType() == Material.LIME_DYE || slotItem.getType() == Material.RED_DYE)) {
+          player.getInventory().clear(4);
+        }
+      }
+
+      if (this.getGameState() == GameState.GAME
+              && this.dangleModePlayers.contains(player.getUniqueId())
+              && !hasPossession) {
+        setDangleMode(player, false);
+      }
+    }
+  }
+
+  public void registerShotOnTargetIfNeeded(Player shooter, Slime slime) {
+    if (!shooter.isOnline() || slime.isDead() || !slime.isValid()) {
+      return;
+    }
+
+    if (this == null || this.getGameState() != GameState.GAME || this.getGame() == null) {
+      return;
+    }
+
+    String team = this.getTeam(shooter);
+    if (team == null) {
+      return;
+    }
+    if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
+      return;
+    }
+    UUID slimeId = slime.getUniqueId();
+    long now = nowMillis();
+    long recentCredit = this.recentShotOnTargetCreditMillis.getOrDefault(slimeId, 0L);
+    if (now - recentCredit < 700L) {
+      return;
+    }
+
+    Location target = team.equalsIgnoreCase("home") ? this.getAwayGoalCenter() :
+            this.getHomeGoalCenter();
+    Location ownGoal = team.equalsIgnoreCase("home") ? this.getHomeGoalCenter() :
+            this.getAwayGoalCenter();
+
+    Vector shotVelocity = slime.getVelocity().clone().setY(0);
+    if (shotVelocity.lengthSquared() < 0.02) {
+      return;
+    }
+
+    Location puckLoc = slime.getLocation();
+    Vector towardGoal = target.toVector().subtract(puckLoc.toVector()).setY(0);
+    if (towardGoal.lengthSquared() < 0.01) {
+      return;
+    }
+
+    Vector shotDirection = shotVelocity.clone().normalize();
+    Vector towardOwnGoal = ownGoal.toVector().subtract(puckLoc.toVector()).setY(0);
+    if (towardOwnGoal.lengthSquared() > 0.01
+            && shotDirection.dot(towardOwnGoal.normalize()) > 0.86) {
+      return;
+    }
+    Vector goalDirection = towardGoal.clone().normalize();
+    if (shotDirection.dot(goalDirection) < 0.78) {
+      return;
+    }
+
+    double velocityX = shotVelocity.getX();
+    double velocityZ = shotVelocity.getZ();
+    double t;
+    if (Math.abs(towardGoal.getX()) >= Math.abs(towardGoal.getZ())) {
+      if (Math.abs(velocityX) < 0.0001) {
+        return;
+      }
+      t = (target.getX() - puckLoc.getX()) / velocityX;
+      if (t <= 0) {
+        return;
+      }
+      double projectedZ = puckLoc.getZ() + velocityZ * t;
+      if (Math.abs(projectedZ - target.getZ()) > 4.1) {
+        return;
+      }
+    } else {
+      if (Math.abs(velocityZ) < 0.0001) {
+        return;
+      }
+      t = (target.getZ() - puckLoc.getZ()) / velocityZ;
+      if (t <= 0) {
+        return;
+      }
+      double projectedX = puckLoc.getX() + velocityX * t;
+      if (Math.abs(projectedX - target.getX()) > 4.1) {
+        return;
+      }
+    }
+
+    double projectedY = puckLoc.getY() + slime.getVelocity().getY() * t;
+    if (projectedY < target.getY() - 0.8 || projectedY > target.getY() + 1.35) {
+      return;
+    }
+
+    this.recentShotOnTargetCreditMillis.put(slimeId, now);
+    this.addShotOnTarget(shooter);
+  }
+
+  public void maybeCreditGoalieSave(Player goalie, Slime slime, Vector incomingVelocity) {
+    if (this.getGameState() != GameState.GAME || this.getGame() == null) {
+      return;
+    }
+
+    Player shooter = this.getGame().getLastTouchPlayer();
+    if (shooter == null || shooter.equals(goalie)) {
+      return;
+    }
+
+    String goalieTeam = this.getTeam(goalie);
+    String shooterTeam = this.getTeam(shooter);
+    if (!"home".equalsIgnoreCase(goalieTeam) && !"away".equalsIgnoreCase(goalieTeam)) {
+      return;
+    }
+    if (!"home".equalsIgnoreCase(shooterTeam) && !"away".equalsIgnoreCase(shooterTeam)) {
+      return;
+    }
+    if (goalieTeam.equalsIgnoreCase(shooterTeam)) {
+      return;
+    }
+
+    Location defendedGoal = goalieTeam.equalsIgnoreCase("home") ? this.getHomeGoalCenter() :
+            this.getAwayGoalCenter();
+    Vector towardGoal = defendedGoal.toVector().subtract(slime.getLocation().toVector()).setY(0);
+    Vector flatIncoming = incomingVelocity.clone().setY(0);
+    if (towardGoal.lengthSquared() < 0.01 || flatIncoming.lengthSquared() < 0.02) {
+      return;
+    }
+    if (flatIncoming.normalize().dot(towardGoal.normalize()) < 0.72) {
+      return;
+    }
+
+    this.addGoalieSave(goalie);
+  }
+
   public void setSpectatorFocusPlayer(Player player) {
     this.spectatorFocusPlayerId = player == null ? null : player.getUniqueId();
   }
@@ -986,7 +1215,149 @@ public class Rink {
     this.spectatorCamera = spectatorCamera;
   }
 
-  public void clearSpectatorCamera() {
-    this.spectatorCamera = null;
+
+  public void updateSpectatorCameraForRink() {
+    ArmorStand camera = this.spectatorCamera;
+    if (camera == null || !camera.isValid()) {
+      return;
+    }
+
+    Location cameraBase = getSpectatorCameraBaseLocation();
+    Location focusTarget = getSpectatorFocusLocation();
+    setYawPitchToward(cameraBase, focusTarget);
+    camera.teleport(cameraBase);
+  }
+
+  private void setYawPitchToward(Location origin, Location target) {
+    if (origin.getWorld() == null || target == null) {
+      return;
+    }
+    Vector direction = target.toVector().subtract(origin.toVector());
+    if (direction.lengthSquared() < 0.0001) {
+      return;
+    }
+    origin.setDirection(direction.normalize());
+  }
+
+  private Location getSpectatorFocusLocation() {
+    Location centerFocus = this.getCenterIce().clone().add(0, 1.1, 0);
+    if (this.getGameState() != GameState.GAME || this.getGame() == null) {
+      return centerFocus;
+    }
+
+    if (this.getGame().isFaceoffCountdownActive()) {
+      this.clearSpectatorFocusPlayer();
+      return centerFocus;
+    }
+
+    int intermissionLeft = this.getGame().getIntermissionTimeLeft();
+    String intermissionLabel = this.getGame().getIntermissionLabel();
+    if (intermissionLeft > 0) {
+      if ("Faceoff".equalsIgnoreCase(intermissionLabel)) {
+        Player scorer = this.getGame().getMostRecentGoalScorer();
+        if (scorer != null && scorer.isOnline()) {
+          return scorer.getEyeLocation();
+        }
+      }
+      return centerFocus;
+    }
+
+    Player manualFocus = this.getSpectatorFocusPlayer();
+    if (manualFocus != null && manualFocus.isOnline()) {
+      return manualFocus.getEyeLocation();
+    }
+
+    for (UUID goalieId : this.glovedGoalies) {
+      Player goalie = Bukkit.getPlayer(goalieId);
+      if (goalie != null && goalie.isOnline() && this.containsPlayer(goalie)) {
+        return goalie.getEyeLocation();
+      }
+    }
+
+    Entity puck = this.getGame().getActivePuck();
+    if (puck != null && puck.isValid()) {
+      return puck.getLocation().clone().add(0, 0.3, 0);
+    }
+
+    return centerFocus;
+  }
+
+  private Location getSpectatorCameraBaseLocation() {
+    Location center = getCenterIce().clone();
+    Location homeBench = getHomeBench();
+    Location awayBench = getAwayBench();
+    Vector towardBench = homeBench.toVector().add(awayBench.toVector()).multiply(0.5).subtract(center.toVector()).setY(0);
+    if (towardBench.lengthSquared() < 0.0001) {
+      towardBench = getHomeGoalCenter().toVector().subtract(getAwayGoalCenter().toVector()).setY(0);
+    }
+    if (towardBench.lengthSquared() < 0.0001) {
+      towardBench = new Vector(1, 0, 0);
+    }
+    towardBench.normalize();
+    return center.add(towardBench.multiply(16)).add(0, 9, 0);
+  }
+
+  private ArmorStand createRinkCamera() {
+    ArmorStand armorStand = centerIce.getWorld().spawn(getSpectatorCameraBaseLocation(), ArmorStand.class);
+    armorStand.setInvisible(true);
+    armorStand.setGravity(false);
+    armorStand.setMarker(true);
+    armorStand.setSmall(true);
+    armorStand.setBasePlate(false);
+    armorStand.setArms(false);
+    armorStand.setSilent(true);
+    armorStand.setInvulnerable(true);
+    armorStand.setCollidable(false);
+    armorStand.setPersistent(true);
+    armorStand.addScoreboardTag(this.name);
+    return armorStand;
+  }
+
+  public void enforceGoalieHalfLineRule() {
+    for (Player online : Bukkit.getOnlinePlayers()) {
+      if (!this.isKeeper(online) || !this.containsPlayer(online)) {
+        continue;
+      }
+
+      if (this.getGameState() != GameState.GAME) {
+        continue;
+      }
+
+      String team = this.getTeam(online);
+      if (!"home".equalsIgnoreCase(team) && !"away".equalsIgnoreCase(team)) {
+        continue;
+      }
+
+      Location center = this.getCenterIce();
+      Location homeGoal = this.getHomeGoalCenter();
+      Location awayGoal = this.getAwayGoalCenter();
+      Location playerLoc = online.getLocation();
+
+      double homeAxis = Math.abs(homeGoal.getX() - center.getX()) >= Math.abs(homeGoal.getZ() - center.getZ())
+              ? homeGoal.getX() : homeGoal.getZ();
+      double awayAxis = Math.abs(awayGoal.getX() - center.getX()) >= Math.abs(awayGoal.getZ() - center.getZ())
+              ? awayGoal.getX() : awayGoal.getZ();
+      boolean useXAxis = Math.abs(homeGoal.getX() - center.getX()) >= Math.abs(homeGoal.getZ() - center.getZ());
+
+      double centerAxis = useXAxis ? center.getX() : center.getZ();
+      double goalieAxis = useXAxis ? playerLoc.getX() : playerLoc.getZ();
+      boolean homeShouldBeLess = homeAxis < awayAxis;
+
+      boolean crossed = "home".equalsIgnoreCase(team)
+              ? (homeShouldBeLess ? goalieAxis > centerAxis + 0.2 : goalieAxis < centerAxis - 0.2)
+              : (homeShouldBeLess ? goalieAxis < centerAxis - 0.2 : goalieAxis > centerAxis + 0.2);
+      if (!crossed) {
+        continue;
+      }
+
+      Location ownGoal = "home".equalsIgnoreCase(team) ? homeGoal : awayGoal;
+      Vector retreatDir = ownGoal.toVector().subtract(playerLoc.toVector()).setY(0);
+      if (retreatDir.lengthSquared() < 0.0001) {
+        retreatDir = ownGoal.toVector().subtract(center.toVector()).setY(0);
+      }
+      retreatDir.normalize();
+      online.setVelocity(retreatDir.multiply(0.8).setY(0.08));
+      online.playSound(playerLoc, Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.7f);
+    }
   }
 }

@@ -84,8 +84,6 @@ public class PlayerHockeyListener implements Listener {
   private static final double GOAL_TRAIL_SIZE_MULTIPLIER = 1.8;
   private static final double GOALIE_BOUNCE_STRENGTH_MULTIPLIER = 0.82;
   private static final double GOALIE_BOUNCE_VERTICAL_MULTIPLIER = 0.90;
-  private static final String SPECTATOR_CAMERA_TAG_PREFIX = "bh_spectator_cam_";
-  private static final long SPECTATOR_CAMERA_RESPAWN_COOLDOWN_MS = 2000L;
 
   private final LobbyManager lobbyManager;
   private final HashMap<UUID, Double> charges = new HashMap<>();
@@ -102,7 +100,6 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
-  private final Map<String, Long> spectatorCameraRespawnCooldown = new HashMap<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
@@ -112,6 +109,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
   private final Map<UUID, UUID> goalieOwnHitNoGlovePlayer = new HashMap<>();
   private int goalTrailTick = 0;
+
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
@@ -303,6 +301,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     Player player = e.getPlayer();
+    Rink playerRink = lobbyManager.getPlayerRink(player);
     UUID uuid = player.getUniqueId();
 
     if (rightClickCooldown.contains(uuid)) {
@@ -320,7 +319,7 @@ public class PlayerHockeyListener implements Listener {
             && e.getClickedBlock() != null
             && e.getClickedBlock().getType() == Material.BARRIER
             && isHockeyStick(interactItem)
-            && handleBenchBarrierInteract(player, e.getClickedBlock().getLocation())) {
+            && playerRink.handleBenchBarrierInteract(player, e.getClickedBlock().getLocation())) {
       e.setCancelled(true);
       return;
     }
@@ -467,6 +466,7 @@ public class PlayerHockeyListener implements Listener {
     Slime slime = (Slime) e.getEntity();
 
     Player player = (Player) e.getDamager();
+    Rink playerRink = this.lobbyManager.getPlayerRink(player);
     ItemStack item = player.getInventory().getItemInMainHand();
     ItemMeta meta = isHockeyStick(item) ? item.getItemMeta() : null;
 
@@ -487,7 +487,6 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
-    Rink playerRink = this.lobbyManager.getPlayerRink(player);
     if (playerRink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
       return;
     }
@@ -497,7 +496,8 @@ public class PlayerHockeyListener implements Listener {
     int hitLevel = Math.max(1, Math.min(3, player.getLevel()));
 
     playerRink.addPlayerLastHit(player);
-    Bukkit.getScheduler().runTaskLater(this.plugin, () -> registerShotOnTargetIfNeeded(player, slime), 1L);
+    Bukkit.getScheduler().runTaskLater(this.plugin,
+            () -> playerRink.registerShotOnTargetIfNeeded(player, slime), 1L);
 
     double charge = getShiftCharge(player);
     boolean goalie = this.lobbyManager.isPlayerAKeeper(player);
@@ -544,7 +544,7 @@ public class PlayerHockeyListener implements Listener {
         faceoffPull.setY(0.0);
         slime.setVelocity(faceoffPull);
         slime.playEffect(EntityEffect.HURT);
-        registerShotOnTargetIfNeeded(player, slime);
+        playerRink.registerShotOnTargetIfNeeded(player, slime);
         return;
       }
 
@@ -860,8 +860,6 @@ public class PlayerHockeyListener implements Listener {
    * Runs the updates for when a player is shifting and increases their xp bar.
    */
   public void update() {
-    updatePossessionIndicators();
-
     for (UUID uuid : this.charges.keySet()) {
       Player p = this.plugin.getServer().getPlayer(uuid);
       if (p == null) {
@@ -957,11 +955,19 @@ public class PlayerHockeyListener implements Listener {
       }
     }
 
-    enforceGoalieHalfLineRule();
+    tickUpdatesForRinks();
     updateGoaliePads();
     updateGoalCelebrationsAndTrails();
-    updateSpectatorCameras();
   }
+
+  private void tickUpdatesForRinks() {
+    for (Rink rink : this.lobbyManager.getRinks()) {
+      rink.enforceGoalieHalfLineRule();
+      rink.updateSpectatorCameraForRink();
+      rink.updatePossessionIndicators();
+    }
+  }
+
 
   private void updateGoalCelebrationsAndTrails() {
     Set<String> activeRinks = new HashSet<>();
@@ -993,7 +999,7 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      spawnGoalTrailForScorer(rink, scorer);
+      spawnGoalTrailForScorer(scorer);
       ensureGoalCelebrationMount(rinkKey, scorer);
       driveGoalCelebrationMount(scorer, this.activeGoalCelebrationMounts.get(rinkKey));
     }
@@ -1006,7 +1012,7 @@ public class PlayerHockeyListener implements Listener {
     }
   }
 
-  private void spawnGoalTrailForScorer(Rink rink, Player scorer) {
+  private void spawnGoalTrailForScorer(Player scorer) {
     CosmeticsManager.GoalTrailType trail = getCosmeticsManager().getGoalTrailType(scorer.getUniqueId());
     Location base = scorer.getLocation().clone().add(0, 0.9, 0);
     World world = base.getWorld();
@@ -1129,269 +1135,12 @@ public class PlayerHockeyListener implements Listener {
     }
   }
 
-  private void updateSpectatorCameras() {
-    for (Rink rink : this.lobbyManager.getRinks()) {
-      updateSpectatorCameraForRink(rink);
-    }
-  }
-
-  private void updateSpectatorCameraForRink(Rink rink) {
-    ArmorStand camera = ensureSpectatorCamera(rink);
-    if (camera == null || !camera.isValid()) {
-      return;
-    }
-
-    Location cameraBase = getSpectatorCameraBaseLocation(rink);
-    Location focusTarget = getSpectatorFocusLocation(rink);
-    setYawPitchToward(cameraBase, focusTarget);
-    camera.teleport(cameraBase);
-    attachFansToSpectatorCamera(rink, camera);
-  }
-
-  private ArmorStand ensureSpectatorCamera(Rink rink) {
-    String key = rink.getName().toLowerCase();
-    ArmorStand existing = rink.getSpectatorCamera();
-    if (existing != null && existing.isValid()) {
-      return existing;
-    }
-
-    Location spawn = getSpectatorCameraBaseLocation(rink);
-    if (spawn.getWorld() == null) {
-      return null;
-    }
-    List<ArmorStand> existingCameras = findExistingSpectatorCameras(spawn, key);
-    if (!existingCameras.isEmpty()) {
-      ArmorStand keep = existingCameras.get(0);
-      for (int i = 1; i < existingCameras.size(); i++) {
-        ArmorStand duplicate = existingCameras.get(i);
-        if (duplicate != null && duplicate.isValid()) {
-          duplicate.remove();
-        }
-      }
-      configureSpectatorCameraStand(keep, key);
-      rink.setSpectatorCamera(keep);
-      return keep;
-    }
-
-    ArmorStand legacyCamera = findLegacySpectatorCameraNearby(spawn);
-    if (legacyCamera != null && legacyCamera.isValid()) {
-      configureSpectatorCameraStand(legacyCamera, key);
-      rink.setSpectatorCamera(legacyCamera);
-      return legacyCamera;
-    }
-
-    long now = nowMillis();
-    Long cooldownUntil = this.spectatorCameraRespawnCooldown.get(key);
-    if (cooldownUntil != null && now < cooldownUntil) {
-      return null;
-    }
-
-    ArmorStand stand = spawn.getWorld().spawn(spawn, ArmorStand.class, armorStand -> {
-      configureSpectatorCameraStand(armorStand, key);
-    });
-    this.spectatorCameraRespawnCooldown.put(key, now + SPECTATOR_CAMERA_RESPAWN_COOLDOWN_MS);
-    rink.setSpectatorCamera(stand);
-    return stand;
-  }
-
   private void resetShiftChargeState(Player player) {
     if (player == null) {
       return;
     }
     this.charges.remove(player.getUniqueId());
     player.setExp(0.0f);
-  }
-
-  private List<ArmorStand> findExistingSpectatorCameras(Location baseLocation, String rinkKey) {
-    List<ArmorStand> found = new ArrayList<>();
-    World world = baseLocation.getWorld();
-    if (world == null) {
-      return found;
-    }
-    String tag = spectatorCameraTag(rinkKey);
-    for (Entity entity : world.getNearbyEntities(baseLocation, 80, 30, 80)) {
-      if (!(entity instanceof ArmorStand)) {
-        continue;
-      }
-      ArmorStand stand = (ArmorStand) entity;
-      if (!stand.getScoreboardTags().contains(tag)) {
-        continue;
-      }
-      found.add(stand);
-    }
-    found.sort((a, b) -> Double.compare(
-            a.getLocation().distanceSquared(baseLocation),
-            b.getLocation().distanceSquared(baseLocation)
-    ));
-    return found;
-  }
-
-  private ArmorStand findLegacySpectatorCameraNearby(Location baseLocation) {
-    World world = baseLocation.getWorld();
-    if (world == null) {
-      return null;
-    }
-
-    ArmorStand closest = null;
-    double closestDistance = Double.MAX_VALUE;
-    for (Entity entity : world.getNearbyEntities(baseLocation, 2.5, 2.5, 2.5)) {
-      if (!(entity instanceof ArmorStand)) {
-        continue;
-      }
-      ArmorStand stand = (ArmorStand) entity;
-      if (!stand.isInvisible() || !stand.isMarker() || stand.hasGravity()) {
-        continue;
-      }
-
-      double distance = stand.getLocation().distanceSquared(baseLocation);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closest = stand;
-      }
-    }
-
-    return closest;
-  }
-
-  private void attachFansToSpectatorCamera(Rink rink, ArmorStand camera) {
-    for (Player player : Bukkit.getOnlinePlayers()) {
-      if (!player.isOnline() || player.getGameMode() != GameMode.SPECTATOR) {
-        continue;
-      }
-      if (!rink.equals(this.lobbyManager.getPlayerRink(player))) {
-        continue;
-      }
-      if (!"none".equalsIgnoreCase(rink.getTeam(player))) {
-        continue;
-      }
-
-      Entity spectatorTarget = player.getSpectatorTarget();
-      if (spectatorTarget == null || !spectatorTarget.isValid() || !spectatorTarget.getUniqueId().equals(camera.getUniqueId())) {
-        player.setSpectatorTarget(camera);
-      }
-    }
-  }
-
-  private void configureSpectatorCameraStand(ArmorStand armorStand, String rinkKey) {
-    armorStand.setInvisible(true);
-    armorStand.setGravity(false);
-    armorStand.setMarker(true);
-    armorStand.setSmall(true);
-    armorStand.setBasePlate(false);
-    armorStand.setArms(false);
-    armorStand.setSilent(true);
-    armorStand.setInvulnerable(true);
-    armorStand.setCollidable(false);
-    armorStand.setPersistent(true);
-    armorStand.addScoreboardTag(spectatorCameraTag(rinkKey));
-  }
-
-  private String spectatorCameraTag(String rinkKey) {
-    return SPECTATOR_CAMERA_TAG_PREFIX + rinkKey;
-  }
-
-  private Location getSpectatorCameraBaseLocation(Rink rink) {
-    Location center = rink.getCenterIce().clone();
-    Location homeBench = rink.getHomeBench();
-    Location awayBench = rink.getAwayBench();
-    Vector towardBench = homeBench.toVector().add(awayBench.toVector()).multiply(0.5).subtract(center.toVector()).setY(0);
-    if (towardBench.lengthSquared() < 0.0001) {
-      towardBench = rink.getHomeGoalCenter().toVector().subtract(rink.getAwayGoalCenter().toVector()).setY(0);
-    }
-    if (towardBench.lengthSquared() < 0.0001) {
-      towardBench = new Vector(1, 0, 0);
-    }
-    towardBench.normalize();
-    return center.add(towardBench.multiply(16)).add(0, 9, 0);
-  }
-
-  private Location getSpectatorFocusLocation(Rink rink) {
-    Location centerFocus = rink.getCenterIce().clone().add(0, 1.1, 0);
-    if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
-      return centerFocus;
-    }
-
-    if (rink.getGame().isFaceoffCountdownActive()) {
-      rink.clearSpectatorFocusPlayer();
-      return centerFocus;
-    }
-
-    int intermissionLeft = rink.getGame().getIntermissionTimeLeft();
-    String intermissionLabel = rink.getGame().getIntermissionLabel();
-    if (intermissionLeft > 0) {
-      if ("Faceoff".equalsIgnoreCase(intermissionLabel)) {
-        Player scorer = rink.getGame().getMostRecentGoalScorer();
-        if (scorer != null && scorer.isOnline()) {
-          return scorer.getEyeLocation();
-        }
-      }
-      return centerFocus;
-    }
-
-    Player manualFocus = rink.getSpectatorFocusPlayer();
-    if (manualFocus != null && manualFocus.isOnline()) {
-      return manualFocus.getEyeLocation();
-    }
-
-    for (UUID goalieId : this.glovedGoalies) {
-      Player goalie = Bukkit.getPlayer(goalieId);
-      if (goalie != null && goalie.isOnline() && rink.equals(this.lobbyManager.getPlayerRink(goalie))) {
-        return goalie.getEyeLocation();
-      }
-    }
-
-    Entity puck = rink.getGame().getActivePuck();
-    if (puck != null && puck.isValid()) {
-      return puck.getLocation().clone().add(0, 0.3, 0);
-    }
-
-    return centerFocus;
-  }
-
-  private void setYawPitchToward(Location origin, Location target) {
-    if (origin.getWorld() == null || target == null) {
-      return;
-    }
-    Vector direction = target.toVector().subtract(origin.toVector());
-    if (direction.lengthSquared() < 0.0001) {
-      return;
-    }
-    origin.setDirection(direction.normalize());
-  }
-
-  private void updatePossessionIndicators() {
-    for (Player player : Bukkit.getOnlinePlayers()) {
-      if (this.lobbyManager.isPlayerInLobby(player)) {
-        continue;
-      }
-
-      Rink rink = this.lobbyManager.getPlayerRink(player);
-      if (rink == null || !this.lobbyManager.isPlayerOnTeam(player)) {
-        continue;
-      }
-
-      boolean hasPossession = rink.hasPossession(player);
-      if (rink.getGameState() == GameState.GAME) {
-        ItemStack indicator = new ItemStack(hasPossession ? Material.LIME_DYE : Material.RED_DYE);
-        ItemMeta meta = indicator.getItemMeta();
-        if (meta != null) {
-          meta.setDisplayName(hasPossession ? POSSESSION_YES : POSSESSION_NO);
-          indicator.setItemMeta(meta);
-        }
-        player.getInventory().setItem(4, indicator);
-      } else {
-        ItemStack slotItem = player.getInventory().getItem(4);
-        if (slotItem != null && (slotItem.getType() == Material.LIME_DYE || slotItem.getType() == Material.RED_DYE)) {
-          player.getInventory().clear(4);
-        }
-      }
-
-      if (rink.getGameState() == GameState.GAME
-              && this.dangleModePlayers.contains(player.getUniqueId())
-              && !hasPossession) {
-        setDangleMode(player, false);
-      }
-    }
   }
 
   private void setDangleMode(Player player, boolean enabled) {
@@ -1697,99 +1446,12 @@ public class PlayerHockeyListener implements Listener {
       slime.setVelocity(bounced);
 
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
-      maybeCreditGoalieSave(player, slime, velocity);
+      this.lobbyManager.getPlayerRink(player).maybeCreditGoalieSave(player, slime, velocity);
 
       this.recentGoalieBounceMillis.put(slimeId, now);
       this.recentGoalieBouncePlayer.put(slimeId, player.getUniqueId());
       break;
     }
-  }
-
-  private void registerShotOnTargetIfNeeded(Player shooter, Slime slime) {
-    if (!shooter.isOnline() || slime.isDead() || !slime.isValid()) {
-      return;
-    }
-
-    Rink rink = this.lobbyManager.getPlayerRink(shooter);
-    if (rink == null || rink.getGameState() != GameState.GAME || rink.getGame() == null) {
-      return;
-    }
-
-    String team = rink.getTeam(shooter);
-    if (team == null) {
-      return;
-    }
-    if (!team.equalsIgnoreCase("home") && !team.equalsIgnoreCase("away")) {
-      return;
-    }
-    UUID slimeId = slime.getUniqueId();
-    long now = nowMillis();
-    long recentCredit = this.recentShotOnTargetCreditMillis.getOrDefault(slimeId, 0L);
-    if (now - recentCredit < 700L) {
-      return;
-    }
-
-    Location target = team.equalsIgnoreCase("home") ? rink.getAwayGoalCenter() : rink.getHomeGoalCenter();
-    Location ownGoal = team.equalsIgnoreCase("home") ? rink.getHomeGoalCenter() : rink.getAwayGoalCenter();
-
-    Vector shotVelocity = slime.getVelocity().clone().setY(0);
-    if (shotVelocity.lengthSquared() < 0.02) {
-      return;
-    }
-
-    Location puckLoc = slime.getLocation();
-    Vector towardGoal = target.toVector().subtract(puckLoc.toVector()).setY(0);
-    if (towardGoal.lengthSquared() < 0.01) {
-      return;
-    }
-
-    Vector shotDirection = shotVelocity.clone().normalize();
-    Vector towardOwnGoal = ownGoal.toVector().subtract(puckLoc.toVector()).setY(0);
-    if (towardOwnGoal.lengthSquared() > 0.01
-            && shotDirection.dot(towardOwnGoal.normalize()) > 0.86) {
-      return;
-    }
-    Vector goalDirection = towardGoal.clone().normalize();
-    if (shotDirection.dot(goalDirection) < 0.78) {
-      return;
-    }
-
-    double velocityX = shotVelocity.getX();
-    double velocityZ = shotVelocity.getZ();
-    double t;
-    if (Math.abs(towardGoal.getX()) >= Math.abs(towardGoal.getZ())) {
-      if (Math.abs(velocityX) < 0.0001) {
-        return;
-      }
-      t = (target.getX() - puckLoc.getX()) / velocityX;
-      if (t <= 0) {
-        return;
-      }
-      double projectedZ = puckLoc.getZ() + velocityZ * t;
-      if (Math.abs(projectedZ - target.getZ()) > 4.1) {
-        return;
-      }
-    } else {
-      if (Math.abs(velocityZ) < 0.0001) {
-        return;
-      }
-      t = (target.getZ() - puckLoc.getZ()) / velocityZ;
-      if (t <= 0) {
-        return;
-      }
-      double projectedX = puckLoc.getX() + velocityX * t;
-      if (Math.abs(projectedX - target.getX()) > 4.1) {
-        return;
-      }
-    }
-
-    double projectedY = puckLoc.getY() + slime.getVelocity().getY() * t;
-    if (projectedY < target.getY() - 0.8 || projectedY > target.getY() + 1.35) {
-      return;
-    }
-
-    this.recentShotOnTargetCreditMillis.put(slimeId, now);
-    rink.addShotOnTarget(shooter);
   }
 
   private void updateGoaliePads() {
@@ -1898,7 +1560,6 @@ public class PlayerHockeyListener implements Listener {
     }
   }
 
-
   @EventHandler
   public void onHitPlayer(EntityDamageByEntityEvent e) {
     if (!(e.getEntity() instanceof Player) || !(e.getDamager() instanceof Player)) {
@@ -1968,163 +1629,10 @@ public class PlayerHockeyListener implements Listener {
     return true;
   }
 
-  private boolean handleBenchBarrierInteract(Player player, Location barrier) {
-    Rink rink = this.lobbyManager.getPlayerRink(player);
-    if (rink == null) {
-      return false;
-    }
-
-    String team = rink.getTeam(player);
-    Location teamBench = null;
-    if ("home".equalsIgnoreCase(team)) {
-      teamBench = rink.getHomeBench();
-    } else if ("away".equalsIgnoreCase(team)) {
-      teamBench = rink.getAwayBench();
-    }
-    if (teamBench == null) {
-      return false;
-    }
-
-    if (!barrier.getWorld().equals(teamBench.getWorld()) || barrier.distanceSquared(teamBench) > 25.0) {
-      return false;
-    }
-
-    Location destination;
-    if (player.getLocation().distanceSquared(teamBench) <= 6.25) {
-      Vector toCenter = rink.getCenterIce().toVector().subtract(teamBench.toVector()).setY(0);
-      if (toCenter.lengthSquared() < 0.0001) {
-        toCenter = player.getLocation().getDirection().setY(0);
-      }
-      if (toCenter.lengthSquared() < 0.0001) {
-        toCenter = new Vector(0, 0, 1);
-      }
-      toCenter.normalize();
-      destination = findSafeBenchExit(teamBench, toCenter);
-    } else {
-      destination = teamBench.clone().add(0, 0.1, 0);
-    }
-
-    destination.setX(destination.getBlockX() + 0.5);
-    destination.setZ(destination.getBlockZ() + 0.5);
-    destination.setYaw(player.getLocation().getYaw());
-    destination.setPitch(player.getLocation().getPitch());
-    player.setNoDamageTicks(20);
-    player.setFallDistance(0f);
-    player.teleport(destination);
-    return true;
-  }
-
-  private Location findSafeBenchExit(Location teamBench, Vector toCenter) {
-    Vector direction = toCenter.clone();
-    if (direction.lengthSquared() < 0.0001) {
-      direction = new Vector(0, 0, 1);
-    }
-    direction.normalize();
-
-    for (double distance = 4.0; distance <= 6.0; distance += 0.5) {
-      Location attempt = teamBench.clone().add(direction.clone().multiply(distance)).add(0, 0.1, 0);
-      Block feet = attempt.getBlock();
-      Block head = feet.getRelative(BlockFace.UP);
-      if (feet.isPassable() && head.isPassable()) {
-        return attempt;
-      }
-    }
-
-    return teamBench.clone().add(direction.multiply(4.5)).add(0, 0.1, 0);
-  }
-
   private boolean isOnIceSurface(Player player) {
     Location location = player.getLocation();
     Block blockBelow = location.clone().add(0, -0.1, 0).getBlock();
     return ICE_SURFACES.contains(blockBelow.getType());
-  }
-
-  private void maybeCreditGoalieSave(Player goalie, Slime slime, Vector incomingVelocity) {
-    Rink rink = this.lobbyManager.getPlayerRink(goalie);
-    if (rink == null || rink.getGameState() != GameState.GAME || rink.getGame() == null) {
-      return;
-    }
-
-    Player shooter = rink.getGame().getLastTouchPlayer();
-    if (shooter == null || shooter.equals(goalie)) {
-      return;
-    }
-
-    String goalieTeam = rink.getTeam(goalie);
-    String shooterTeam = rink.getTeam(shooter);
-    if (!"home".equalsIgnoreCase(goalieTeam) && !"away".equalsIgnoreCase(goalieTeam)) {
-      return;
-    }
-    if (!"home".equalsIgnoreCase(shooterTeam) && !"away".equalsIgnoreCase(shooterTeam)) {
-      return;
-    }
-    if (goalieTeam.equalsIgnoreCase(shooterTeam)) {
-      return;
-    }
-
-    Location defendedGoal = goalieTeam.equalsIgnoreCase("home") ? rink.getHomeGoalCenter() : rink.getAwayGoalCenter();
-    Vector towardGoal = defendedGoal.toVector().subtract(slime.getLocation().toVector()).setY(0);
-    Vector flatIncoming = incomingVelocity.clone().setY(0);
-    if (towardGoal.lengthSquared() < 0.01 || flatIncoming.lengthSquared() < 0.02) {
-      return;
-    }
-    if (flatIncoming.normalize().dot(towardGoal.normalize()) < 0.72) {
-      return;
-    }
-
-    rink.addGoalieSave(goalie);
-  }
-
-  private void enforceGoalieHalfLineRule() {
-    for (Player online : Bukkit.getOnlinePlayers()) {
-      if (!this.lobbyManager.isPlayerAKeeper(online) || this.lobbyManager.isPlayerInLobby(online)) {
-        continue;
-      }
-
-      Rink rink = this.lobbyManager.getPlayerRink(online);
-      if (rink == null) {
-        continue;
-      }
-      if (rink.getGameState() != GameState.GAME) {
-        continue;
-      }
-
-      String team = rink.getTeam(online);
-      if (!"home".equalsIgnoreCase(team) && !"away".equalsIgnoreCase(team)) {
-        continue;
-      }
-
-      Location center = rink.getCenterIce();
-      Location homeGoal = rink.getHomeGoalCenter();
-      Location awayGoal = rink.getAwayGoalCenter();
-      Location playerLoc = online.getLocation();
-
-      double homeAxis = Math.abs(homeGoal.getX() - center.getX()) >= Math.abs(homeGoal.getZ() - center.getZ())
-              ? homeGoal.getX() : homeGoal.getZ();
-      double awayAxis = Math.abs(awayGoal.getX() - center.getX()) >= Math.abs(awayGoal.getZ() - center.getZ())
-              ? awayGoal.getX() : awayGoal.getZ();
-      boolean useXAxis = Math.abs(homeGoal.getX() - center.getX()) >= Math.abs(homeGoal.getZ() - center.getZ());
-
-      double centerAxis = useXAxis ? center.getX() : center.getZ();
-      double goalieAxis = useXAxis ? playerLoc.getX() : playerLoc.getZ();
-      boolean homeShouldBeLess = homeAxis < awayAxis;
-
-      boolean crossed = "home".equalsIgnoreCase(team)
-              ? (homeShouldBeLess ? goalieAxis > centerAxis + 0.2 : goalieAxis < centerAxis - 0.2)
-              : (homeShouldBeLess ? goalieAxis < centerAxis - 0.2 : goalieAxis > centerAxis + 0.2);
-      if (!crossed) {
-        continue;
-      }
-
-      Location ownGoal = "home".equalsIgnoreCase(team) ? homeGoal : awayGoal;
-      Vector retreatDir = ownGoal.toVector().subtract(playerLoc.toVector()).setY(0);
-      if (retreatDir.lengthSquared() < 0.0001) {
-        retreatDir = ownGoal.toVector().subtract(center.toVector()).setY(0);
-      }
-      retreatDir.normalize();
-      online.setVelocity(retreatDir.multiply(0.8).setY(0.08));
-      online.playSound(playerLoc, Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.7f);
-    }
   }
 
   private CosmeticsManager getCosmeticsManager() {
