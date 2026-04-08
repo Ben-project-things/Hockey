@@ -16,6 +16,7 @@ public class RinkBuilder {
   private Location awayGoal;
   private Location awayBench;
   private Location penaltyBox;
+  private Location spectatorCamera;
   private final JavaPlugin plugin;
 
   /**
@@ -70,6 +71,14 @@ public class RinkBuilder {
     this.penaltyBox = loc;
   }
 
+  /**
+   * Sets the location of the spectator camera.
+   * @param loc is the location
+   */
+  public void setSpectatorCamera(Location loc) {
+    this.spectatorCamera = loc;
+  }
+
 
   /**
    * Gets the location of the home goal.
@@ -112,11 +121,20 @@ public class RinkBuilder {
   }
 
   /**
+   * Gets the location of the spectator camera.
+   * @return the location
+   */
+  public Location getSpectatorCamera() {
+    return this.spectatorCamera;
+  }
+
+  /**
    * Builds the actual rink with the selected values.
    * @return the actual rink built
    */
   public Rink build() {
-    return new Rink(name, centerIce, homeGoal, awayGoal, penaltyBox, homeBench, awayBench, plugin);
+    return new Rink(name, centerIce, homeGoal, awayGoal, penaltyBox, homeBench, awayBench,
+            spectatorCamera, plugin);
   }
 
   /**
