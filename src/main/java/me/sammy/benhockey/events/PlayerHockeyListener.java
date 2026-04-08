@@ -22,6 +22,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -77,6 +78,11 @@ public class PlayerHockeyListener implements Listener {
   private static final double SHIFT_LIFT_SCALE_Y = 0.25;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
   private static final long GOALIE_OWN_CLEARANCE_NO_REGLOVE_MS = 1200L;
+  private static final double GOAL_CELEBRATION_SPEED = 0.34;
+  private static final double GOAL_CELEBRATION_DOWNWARD_VELOCITY = -0.06;
+  private static final double GOALIE_BOUNCE_STRENGTH_MULTIPLIER = 0.82;
+  private static final double GOALIE_BOUNCE_VERTICAL_MULTIPLIER = 0.90;
+  private static final String SPECTATOR_CAMERA_TAG_PREFIX = "bh_spectator_cam_";
   private final LobbyManager lobbyManager;
   private final HashMap<UUID, Double> charges = new HashMap<>();
   private final JavaPlugin plugin;
@@ -92,6 +98,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, ArmorStand> spectatorCamStands = new HashMap<>();
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
+  private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
   private final Set<UUID> releasedSpectatorCamera = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
@@ -170,6 +177,7 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onSneak(PlayerToggleSneakEvent e) {
     Player p = e.getPlayer();
+    removeGoalCelebrationMountForPlayer(p);
     if (p.getGameMode() == GameMode.SPECTATOR && !this.lobbyManager.isPlayerInLobby(p)) {
       p.setSpectatorTarget(null);
       this.releasedSpectatorCamera.add(p.getUniqueId());
@@ -189,7 +197,14 @@ public class PlayerHockeyListener implements Listener {
     if (lobbyManager.isPlayerAKeeper(p) && e.isSneaking()) {
 
     }
-    removeGoalCelebrationMountForPlayer(p);
+  }
+
+  @EventHandler
+  public void onPlayerDismount(EntityDismountEvent e) {
+    if (!(e.getEntity() instanceof Player)) {
+      return;
+    }
+    removeGoalCelebrationMountForPlayer((Player) e.getEntity());
   }
 
   @EventHandler
@@ -948,6 +963,7 @@ public class PlayerHockeyListener implements Listener {
       activeRinks.add(rinkKey);
       if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
         clearGoalCelebrationMount(rinkKey);
+        this.dismissedGoalCelebrationRinks.remove(rinkKey);
         continue;
       }
 
@@ -955,12 +971,18 @@ public class PlayerHockeyListener implements Listener {
       String intermissionLabel = rink.getGame().getIntermissionLabel();
       if (intermissionLeft <= 0 || !"Faceoff".equalsIgnoreCase(intermissionLabel)) {
         clearGoalCelebrationMount(rinkKey);
+        this.dismissedGoalCelebrationRinks.remove(rinkKey);
         continue;
       }
 
       Player scorer = rink.getGame().getMostRecentGoalScorer();
       if (scorer == null || !scorer.isOnline()) {
         clearGoalCelebrationMount(rinkKey);
+        this.dismissedGoalCelebrationRinks.remove(rinkKey);
+        continue;
+      }
+
+      if (this.dismissedGoalCelebrationRinks.contains(rinkKey)) {
         continue;
       }
 
@@ -972,6 +994,7 @@ public class PlayerHockeyListener implements Listener {
     for (String rinkName : new HashSet<>(this.activeGoalCelebrationMounts.keySet())) {
       if (!activeRinks.contains(rinkName)) {
         clearGoalCelebrationMount(rinkName);
+        this.dismissedGoalCelebrationRinks.remove(rinkName);
       }
     }
   }
@@ -1058,9 +1081,12 @@ public class PlayerHockeyListener implements Listener {
     if (direction.lengthSquared() < 0.0001) {
       return;
     }
-    direction.normalize().multiply(0.55);
-    direction.setY(-0.08);
+    direction.normalize().multiply(GOAL_CELEBRATION_SPEED);
+    direction.setY(GOAL_CELEBRATION_DOWNWARD_VELOCITY);
     mount.setVelocity(direction);
+    Location mountLoc = mount.getLocation();
+    mountLoc.setDirection(direction);
+    mount.teleport(mountLoc);
   }
 
   private void clearGoalCelebrationMount(String rinkKey) {
@@ -1084,6 +1110,7 @@ public class PlayerHockeyListener implements Listener {
       }
       mount.removePassenger(player);
       clearGoalCelebrationMount(rinkKey);
+      this.dismissedGoalCelebrationRinks.add(rinkKey);
     }
   }
 
@@ -1138,20 +1165,67 @@ public class PlayerHockeyListener implements Listener {
     if (spawn.getWorld() == null) {
       return null;
     }
+    List<ArmorStand> existingCameras = findExistingSpectatorCameras(spawn, key);
+    if (!existingCameras.isEmpty()) {
+      ArmorStand keep = existingCameras.get(0);
+      for (int i = 1; i < existingCameras.size(); i++) {
+        ArmorStand duplicate = existingCameras.get(i);
+        if (duplicate != null && duplicate.isValid()) {
+          duplicate.remove();
+        }
+      }
+      configureSpectatorCameraStand(keep, key);
+      this.spectatorCamStands.put(key, keep);
+      return keep;
+    }
+
     ArmorStand stand = spawn.getWorld().spawn(spawn, ArmorStand.class, armorStand -> {
-      armorStand.setInvisible(true);
-      armorStand.setGravity(false);
-      armorStand.setMarker(true);
-      armorStand.setSmall(true);
-      armorStand.setBasePlate(false);
-      armorStand.setArms(false);
-      armorStand.setSilent(true);
-      armorStand.setInvulnerable(true);
-      armorStand.setCollidable(false);
-      armorStand.setPersistent(true);
+      configureSpectatorCameraStand(armorStand, key);
     });
     this.spectatorCamStands.put(key, stand);
     return stand;
+  }
+
+  private List<ArmorStand> findExistingSpectatorCameras(Location baseLocation, String rinkKey) {
+    List<ArmorStand> found = new ArrayList<>();
+    World world = baseLocation.getWorld();
+    if (world == null) {
+      return found;
+    }
+    String tag = spectatorCameraTag(rinkKey);
+    for (Entity entity : world.getNearbyEntities(baseLocation, 80, 30, 80)) {
+      if (!(entity instanceof ArmorStand)) {
+        continue;
+      }
+      ArmorStand stand = (ArmorStand) entity;
+      if (!stand.getScoreboardTags().contains(tag)) {
+        continue;
+      }
+      found.add(stand);
+    }
+    found.sort((a, b) -> Double.compare(
+            a.getLocation().distanceSquared(baseLocation),
+            b.getLocation().distanceSquared(baseLocation)
+    ));
+    return found;
+  }
+
+  private void configureSpectatorCameraStand(ArmorStand armorStand, String rinkKey) {
+    armorStand.setInvisible(true);
+    armorStand.setGravity(false);
+    armorStand.setMarker(true);
+    armorStand.setSmall(true);
+    armorStand.setBasePlate(false);
+    armorStand.setArms(false);
+    armorStand.setSilent(true);
+    armorStand.setInvulnerable(true);
+    armorStand.setCollidable(false);
+    armorStand.setPersistent(true);
+    armorStand.addScoreboardTag(spectatorCameraTag(rinkKey));
+  }
+
+  private String spectatorCameraTag(String rinkKey) {
+    return SPECTATOR_CAMERA_TAG_PREFIX + rinkKey;
   }
 
   private Location getSpectatorCameraBaseLocation(Rink rink) {
@@ -1556,8 +1630,8 @@ public class PlayerHockeyListener implements Listener {
       }
       yawRedirect.normalize();
 
-      Vector bounced = yawRedirect.multiply(Math.max(0.22, horizontalSpeed * 0.9));
-      bounced.setY(Math.max(0.04, velocity.getY() * 0.95));
+      Vector bounced = yawRedirect.multiply(Math.max(0.22, horizontalSpeed * GOALIE_BOUNCE_STRENGTH_MULTIPLIER));
+      bounced.setY(Math.max(0.04, velocity.getY() * GOALIE_BOUNCE_VERTICAL_MULTIPLIER));
       slime.setVelocity(bounced);
 
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
