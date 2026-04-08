@@ -73,8 +73,13 @@ public class MyTabCompleter implements TabCompleter {
 
     if (command.getName().equalsIgnoreCase("setgoal")) {
       if (args.length == 1) {
-        return Arrays.asList("home", "away", "penalty", "homebench", "awaybench").stream()
+        return Arrays.asList("home", "away", "penalty", "homebench", "awaybench", "camera").stream()
                 .filter(s -> s.startsWith(args[0].toLowerCase()))
+                .collect(Collectors.toList());
+      }
+      if (args.length == 2 && "camera".equalsIgnoreCase(args[0])) {
+        return Arrays.asList("default").stream()
+                .filter(s -> s.startsWith(args[1].toLowerCase()))
                 .collect(Collectors.toList());
       }
     }

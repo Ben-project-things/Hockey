@@ -183,7 +183,12 @@ public class GameCommands implements CommandExecutor {
             player.teleport(broadcastRink.getFanSpawnLocation());
             player.sendMessage("§6[§bBH§6] §aBroadcast camera disabled.");
           } else {
-            player.setSpectatorTarget(broadcastRink.ensureSpectatorCamera());
+            org.bukkit.entity.ArmorStand camera = broadcastRink.ensureSpectatorCamera();
+            if (camera == null) {
+              player.sendMessage("§6[§bBH§6] §cUnable to spawn the broadcast camera right now.");
+              return true;
+            }
+            player.setSpectatorTarget(camera);
             player.sendMessage("§6[§bBH§6] §aBroadcast camera enabled.");
           }
           return true;
@@ -508,12 +513,19 @@ public class GameCommands implements CommandExecutor {
             player.sendMessage("§6[§bBH§6] §cYou do not have permission.");
             return true;
           }
-          if (args.length != 1) {
+          if (args.length < 1 || args.length > 2) {
             player.sendMessage("§6[§bBH§6] §aUsage: §7/setgoal " +
-                    "<home/away/penalty/homebench/awaybench>");
+                    "<home/away/penalty/homebench/awaybench/camera> [default]");
             return true;
           }
-          lobbyManager.setGoal(args[0], player);
+          boolean defaultCamera = args.length == 2
+                  && "camera".equalsIgnoreCase(args[0])
+                  && "default".equalsIgnoreCase(args[1]);
+          if (args.length == 2 && !defaultCamera) {
+            player.sendMessage("§6[§bBH§6] §aUsage: §7/setgoal camera default");
+            return true;
+          }
+          lobbyManager.setGoal(args[0], player, defaultCamera);
           return true;
 
         case "cancelrink":
@@ -587,8 +599,9 @@ public class GameCommands implements CommandExecutor {
       player.sendMessage("§a/startfight <p1> <p2>/brawl §7- Starts a fight while game is paused.");
       player.sendMessage("§a/endfight §7- Ends the current fight.");
       player.sendMessage("§a/createrink <rinkname> §7- Create a new rink.");
-      player.sendMessage("§a/setgoal <red/blue/penalty> §7- Sets the specified location for " +
-              "§7the rink.");
+      player.sendMessage("§a/setgoal <home/away/penalty/homebench/awaybench/camera> §7- Sets the " +
+              "specified location for the rink.");
+      player.sendMessage("§a/setgoal camera default §7- Use the auto camera position for this rink.");
       player.sendMessage("§a/cancelrink §7- Cancel rink setup.");
       player.sendMessage("§a/deleterink <rinkname> §7- Delete a rink.");
     }

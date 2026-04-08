@@ -100,6 +100,8 @@ public class LobbyManager {
     player.sendMessage("§6[§bBH§6] §aStarted rink creation: §b" + rinkName);
     player.sendMessage("§6[§bBH§6] §aUse /setgoal home (red), /setgoal homebench, /setgoal away " +
             "(blue), /setgoal awaybench, and /setgoal penalty at §aeach position.");
+    player.sendMessage("§6[§bBH§6] §7Optional: /setgoal camera to use your current location, or " +
+            "/setgoal camera default for the automatic camera position.");
   }
 
   /**
@@ -107,7 +109,7 @@ public class LobbyManager {
    * @param type is the location place the player is setting up
    * @param player is the player that is setting up
    */
-  public void setGoal(String type, Player player) {
+  public void setGoal(String type, Player player, boolean defaultCamera) {
     RinkBuilder builder = rinkBuilders.get(player.getUniqueId());
     if (builder == null) {
       player.sendMessage("§6[§bBH§6] §cYou haven't started creating a rink. " +
@@ -137,9 +139,18 @@ public class LobbyManager {
         builder.setPenaltyBox(loc);
         player.sendMessage("§6[§bBH§6] §7Penalty box set.");
         break;
+      case "camera":
+        if (defaultCamera) {
+          builder.setSpectatorCamera(null);
+          player.sendMessage("§6[§bBH§6] §bBroadcast camera reset to default auto-position.");
+        } else {
+          builder.setSpectatorCamera(loc);
+          player.sendMessage("§6[§bBH§6] §bBroadcast camera set.");
+        }
+        break;
       default:
         player.sendMessage("§6[§bBH§6] §aUsage: §7/setgoal " +
-                "<home/away/penalty/homebench/awaybench>");
+                "<home/away/penalty/homebench/awaybench/camera>");
         return;
     }
 
@@ -159,7 +170,6 @@ public class LobbyManager {
     if (builder.getAwayBench() == null) {
       remaining.add("Away Bench");
     }
-
     if (remaining.isEmpty()) {
       Rink newRink = builder.build();
       rinks.add(newRink);
@@ -325,6 +335,7 @@ public class LobbyManager {
       saveLocation(config, basePath + ".penaltyBox", rink.getPenaltyBox());
       saveLocation(config, basePath + ".homeBench", rink.getHomeBench());
       saveLocation(config, basePath + ".awayBench", rink.getAwayBench());
+      saveLocation(config, basePath + ".spectatorCamera", rink.getSpectatorCameraSpawnLocation());
     }
 
     try {
@@ -357,6 +368,7 @@ public class LobbyManager {
       Location penaltyBox = loadLocation(config, basePath + ".penaltyBox");
       Location homeBench = loadLocation(config, basePath + ".homeBench");
       Location awayBench = loadLocation(config, basePath + ".awayBench");
+      Location spectatorCamera = loadLocation(config, basePath + ".spectatorCamera");
 
       if (centerIce == null || homeGoal == null || awayGoal == null || penaltyBox == null
               || homeBench == null || awayBench == null) {
@@ -364,7 +376,8 @@ public class LobbyManager {
         continue;
       }
 
-      rinks.add(new Rink(rinkName, centerIce, homeGoal, awayGoal, penaltyBox, homeBench, awayBench, plugin));
+      rinks.add(new Rink(rinkName, centerIce, homeGoal, awayGoal, penaltyBox, homeBench, awayBench,
+              spectatorCamera, plugin));
     }
   }
 

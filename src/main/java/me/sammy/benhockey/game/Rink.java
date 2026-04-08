@@ -66,6 +66,7 @@ public class Rink {
   private GameScoreboard scoreboard;
   private UUID spectatorFocusPlayerId;
   private ArmorStand spectatorCamera;
+  private Location spectatorCameraSpawnLocation;
   private final JavaPlugin plugin;
 
   private final Location centerIce;
@@ -90,7 +91,7 @@ public class Rink {
    */
   public Rink(String name, Location centerIce, Location redGoal,
               Location blueGoal, Location penaltyBox, Location homeBench,
-              Location awayBench, JavaPlugin plugin) {
+              Location awayBench, Location spectatorCameraSpawnLocation, JavaPlugin plugin) {
     this.name = name;
     this.centerIce = centerIce;
     this.penaltyBox = penaltyBox;
@@ -106,7 +107,10 @@ public class Rink {
     this.state = GameState.PREGAME;
     this.scoreboard = new GameScoreboard(this);
     this.spectatorFocusPlayerId = null;
-    this.spectatorCamera = findOrCreateRinkCamera();
+    this.spectatorCameraSpawnLocation = spectatorCameraSpawnLocation == null
+            ? getDefaultSpectatorCameraBaseLocation()
+            : spectatorCameraSpawnLocation.clone();
+    this.spectatorCamera = spawnRinkCamera();
   }
 
   /**
@@ -1410,8 +1414,11 @@ public class Rink {
 
   public void updateSpectatorCameraForRink() {
     ArmorStand camera = ensureSpectatorCamera();
+    if (camera == null) {
+      return;
+    }
 
-    Location cameraBase = getSpectatorCameraBaseLocation();
+    Location cameraBase = getSpectatorCameraSpawnLocation();
     Location focusTarget = getSpectatorFocusLocation();
     setYawPitchToward(cameraBase, focusTarget);
     camera.teleport(cameraBase);
@@ -1420,45 +1427,10 @@ public class Rink {
   public ArmorStand ensureSpectatorCamera() {
     ArmorStand camera = this.spectatorCamera;
     if (camera == null || !camera.isValid()) {
-      this.spectatorCamera = findOrCreateRinkCamera();
+      this.spectatorCamera = spawnRinkCamera();
       camera = this.spectatorCamera;
     }
     return camera;
-  }
-
-  private ArmorStand findOrCreateRinkCamera() {
-    ArmorStand existingCamera = findExistingRinkCamera();
-    if (existingCamera != null) {
-      return existingCamera;
-    }
-    return createRinkCamera();
-  }
-
-  private ArmorStand findExistingRinkCamera() {
-    if (this.centerIce.getWorld() == null) {
-      return null;
-    }
-
-    ArmorStand firstMatch = null;
-    for (ArmorStand stand : this.centerIce.getWorld().getEntitiesByClass(ArmorStand.class)) {
-      if (!isRinkCamera(stand)) {
-        continue;
-      }
-
-      if (firstMatch == null) {
-        firstMatch = stand;
-        continue;
-      }
-
-      stand.remove();
-    }
-    return firstMatch;
-  }
-
-  private boolean isRinkCamera(ArmorStand stand) {
-    Set<String> tags = stand.getScoreboardTags();
-    return tags.contains(CAMERA_TAG) && tags.contains(this.name)
-            || tags.contains(this.name) && stand.isMarker() && stand.isInvisible();
   }
 
   public Location getFanSpawnLocation() {
@@ -1505,6 +1477,11 @@ public class Rink {
       return manualFocus.getEyeLocation();
     }
 
+    Player fightFocus = getFightBroadcastFocusPlayer();
+    if (fightFocus != null) {
+      return fightFocus.getEyeLocation();
+    }
+
     for (UUID goalieId : this.glovedGoalies) {
       Player goalie = Bukkit.getPlayer(goalieId);
       if (goalie != null && goalie.isOnline() && this.containsPlayer(goalie)) {
@@ -1520,7 +1497,7 @@ public class Rink {
     return centerFocus;
   }
 
-  private Location getSpectatorCameraBaseLocation() {
+  private Location getDefaultSpectatorCameraBaseLocation() {
     Location center = getCenterIce().clone();
     Location homeBench = getHomeBench();
     Location awayBench = getAwayBench();
@@ -1535,8 +1512,47 @@ public class Rink {
     return center.add(towardBench.multiply(16)).add(0, 9, 0);
   }
 
-  private ArmorStand createRinkCamera() {
-    ArmorStand armorStand = centerIce.getWorld().spawn(getSpectatorCameraBaseLocation(), ArmorStand.class);
+  public Location getSpectatorCameraSpawnLocation() {
+    return this.spectatorCameraSpawnLocation.clone();
+  }
+
+  private Player getFightBroadcastFocusPlayer() {
+    if (!isFightActive()) {
+      return null;
+    }
+
+    Player bestTarget = null;
+    if (this.isBrawlFightActive()) {
+      double lowestHealth = Double.MAX_VALUE;
+      for (UUID playerId : this.fightingPlayers) {
+        Player fighter = Bukkit.getPlayer(playerId);
+        if (fighter == null || !fighter.isOnline() || !this.containsPlayer(fighter)) {
+          continue;
+        }
+
+        double health = fighter.getHealth();
+        if (health < lowestHealth) {
+          lowestHealth = health;
+          bestTarget = fighter;
+        }
+      }
+      return bestTarget;
+    }
+
+    for (UUID playerId : this.fightingPlayers) {
+      Player fighter = Bukkit.getPlayer(playerId);
+      if (fighter != null && fighter.isOnline() && this.containsPlayer(fighter)) {
+        return fighter;
+      }
+    }
+    return null;
+  }
+
+  private ArmorStand spawnRinkCamera() {
+    if (this.centerIce.getWorld() == null) {
+      return null;
+    }
+    ArmorStand armorStand = centerIce.getWorld().spawn(getSpectatorCameraSpawnLocation(), ArmorStand.class);
     armorStand.setInvisible(true);
     armorStand.setGravity(false);
     armorStand.setMarker(true);
