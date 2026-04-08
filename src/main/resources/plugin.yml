@@ -16,6 +16,8 @@ commands:
     description: Leave a rink
   bench:
     description: Teleport to your team's bench
+  broadcast:
+    description: Toggle spectating the rink broadcast camera (fans only)
   goalie:
     description: Change position to goalie
   stats:

@@ -152,6 +152,32 @@ public class GameCommands implements CommandExecutor {
           benchRink.sendPlayerToBench(player);
           return true;
 
+        case "broadcast":
+          if (lobbyManager.isPlayerInLobby(player)) {
+            player.sendMessage("§6[§bBH§6] §cYou must be in a rink to use this command.");
+            return true;
+          }
+
+          Rink broadcastRink = lobbyManager.getPlayerRink(player);
+          if (!broadcastRink.isFan(player)) {
+            player.sendMessage("§6[§bBH§6] §cOnly fans can use /broadcast.");
+            return true;
+          }
+
+          if (player.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
+            player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+          }
+
+          if (player.getSpectatorTarget() == broadcastRink.getSpectatorCamera()) {
+            player.setSpectatorTarget(null);
+            player.teleport(broadcastRink.getFanSpawnLocation());
+            player.sendMessage("§6[§bBH§6] §aBroadcast camera disabled.");
+          } else {
+            player.setSpectatorTarget(broadcastRink.ensureSpectatorCamera());
+            player.sendMessage("§6[§bBH§6] §aBroadcast camera enabled.");
+          }
+          return true;
+
         case "startgame":
           if (player.isOp() || lobbyManager.getPlayerRink(player).getTeam(player).equalsIgnoreCase("ref")) {
             if (lobbyManager.isPlayerInLobby(player)) {
@@ -420,6 +446,7 @@ public class GameCommands implements CommandExecutor {
     player.sendMessage("§a/puck §7- Spawns a personal puck.");
     player.sendMessage("§a/leave §7- Return to lobby.");
     player.sendMessage("§a/bench §7- Teleport to your team's bench.");
+    player.sendMessage("§a/broadcast §7- Toggle rink broadcast camera (fans only).");
     player.sendMessage("§a/cosmetics §7- Open the cosmetics menu.");
 
     if (player.isOp()) {

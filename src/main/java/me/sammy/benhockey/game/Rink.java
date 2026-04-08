@@ -117,10 +117,10 @@ public class Rink {
   Inventory inventory = p.getInventory();
   inventory.clear();
   p.setGameMode(GameMode.SPECTATOR);
-  p.setSpectatorTarget(this.spectatorCamera);
+  p.setSpectatorTarget(null);
 
   this.scoreboard.showToPlayer(p);
-  p.teleport(new Location(p.getWorld(), centerIce.getX(), centerIce.getY() + 7, centerIce.getZ()));
+  p.teleport(getFanSpawnLocation());
 }
 
   /**
@@ -366,6 +366,9 @@ public class Rink {
     refs.remove(p);
     homeTeam.remove(p);
     awayTeam.remove(p);
+    if (p.getGameMode() == GameMode.SPECTATOR) {
+      p.setSpectatorTarget(null);
+    }
     this.glovedGoalies.remove(p.getUniqueId());
     this.dangleModePlayers.remove(p.getUniqueId());
     this.removePersonalPuck(p);
@@ -519,6 +522,10 @@ public class Rink {
   public boolean containsPlayer(Player p) {
     return fans.contains(p) || homeTeam.contains(p)
             || awayTeam.contains(p) || refs.contains(p);
+  }
+
+  public boolean isFan(Player p) {
+    return fans.contains(p);
   }
 
   /**
@@ -1253,15 +1260,26 @@ public class Rink {
   }
 
   public void updateSpectatorCameraForRink() {
-    ArmorStand camera = this.spectatorCamera;
-    if (camera == null || !camera.isValid()) {
-      return;
-    }
+    ArmorStand camera = ensureSpectatorCamera();
 
     Location cameraBase = getSpectatorCameraBaseLocation();
     Location focusTarget = getSpectatorFocusLocation();
     setYawPitchToward(cameraBase, focusTarget);
     camera.teleport(cameraBase);
+  }
+
+  public ArmorStand ensureSpectatorCamera() {
+    ArmorStand camera = this.spectatorCamera;
+    if (camera == null || !camera.isValid()) {
+      this.spectatorCamera = createRinkCamera();
+      camera = this.spectatorCamera;
+    }
+    return camera;
+  }
+
+  public Location getFanSpawnLocation() {
+    return new Location(this.centerIce.getWorld(), this.centerIce.getX(), this.centerIce.getY() + 7,
+            this.centerIce.getZ());
   }
 
   private void setYawPitchToward(Location origin, Location target) {
