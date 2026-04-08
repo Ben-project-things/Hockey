@@ -80,6 +80,7 @@ public class PlayerHockeyListener implements Listener {
   private static final long GOALIE_OWN_CLEARANCE_NO_REGLOVE_MS = 1200L;
   private static final double GOAL_CELEBRATION_SPEED = 0.34;
   private static final double GOAL_CELEBRATION_DOWNWARD_VELOCITY = -0.06;
+  private static final double GOAL_TRAIL_SIZE_MULTIPLIER = 1.8;
   private static final double GOALIE_BOUNCE_STRENGTH_MULTIPLIER = 0.82;
   private static final double GOALIE_BOUNCE_VERTICAL_MULTIPLIER = 0.90;
   private static final String SPECTATOR_CAMERA_TAG_PREFIX = "bh_spectator_cam_";
@@ -96,7 +97,6 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, UUID> recentGoalieBouncePlayer = new HashMap<>();
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
-  private final Map<String, ArmorStand> spectatorCamStands = new HashMap<>();
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
   private final Set<UUID> releasedSpectatorCamera = new HashSet<>();
@@ -204,7 +204,9 @@ public class PlayerHockeyListener implements Listener {
     if (!(e.getEntity() instanceof Player)) {
       return;
     }
-    removeGoalCelebrationMountForPlayer((Player) e.getEntity());
+    Player player = (Player) e.getEntity();
+    removeGoalCelebrationMountForPlayer(player);
+    resetShiftChargeState(player);
   }
 
   @EventHandler
@@ -1015,30 +1017,34 @@ public class PlayerHockeyListener implements Listener {
     }
     if (selected == CosmeticsManager.TrailParticle.RAINBOW) {
       Particle.DustOptions[] rainbowDust = {
-          new Particle.DustOptions(org.bukkit.Color.RED, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.LIME, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.AQUA, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.BLUE, 1.25f),
-          new Particle.DustOptions(org.bukkit.Color.PURPLE, 1.25f)
+          new Particle.DustOptions(org.bukkit.Color.RED, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.ORANGE, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.YELLOW, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.LIME, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.AQUA, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.BLUE, 2.0f),
+          new Particle.DustOptions(org.bukkit.Color.PURPLE, 2.0f)
       };
       Particle.DustOptions dust = rainbowDust[(this.goalTrailTick / 2) % rainbowDust.length];
       this.goalTrailTick++;
-      world.spawnParticle(Particle.REDSTONE, base, 7, 0.2, 0.22, 0.2, 0.01, dust);
+      world.spawnParticle(Particle.REDSTONE, base, 12, 0.24, 0.28, 0.24, 0.01, dust);
       return;
     }
     if (selected.dustOptions != null) {
-      world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
-              selected.offsetZ, selected.speed, selected.dustOptions);
+      Particle.DustOptions enlargedDust = new Particle.DustOptions(
+              selected.dustOptions.getColor(),
+              selected.dustOptions.getSize() * (float) GOAL_TRAIL_SIZE_MULTIPLIER
+      );
+      world.spawnParticle(selected.particle, base, selected.count + 4, selected.offsetX * 1.15, selected.offsetY * 1.15,
+              selected.offsetZ * 1.15, selected.speed, enlargedDust);
       return;
     }
     if (selected.dataMaterial != null) {
-      world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
+      world.spawnParticle(selected.particle, base, selected.count + 4, selected.offsetX * 1.15, selected.offsetY * 1.15,
               selected.offsetZ, selected.speed, Bukkit.createBlockData(selected.dataMaterial));
       return;
     }
-    world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
+    world.spawnParticle(selected.particle, base, selected.count + 4, selected.offsetX * 1.15, selected.offsetY * 1.15,
             selected.offsetZ, selected.speed);
   }
 
@@ -1077,15 +1083,20 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
     Location look = scorer.getLocation();
-    Vector direction = look.getDirection().setY(0);
-    if (direction.lengthSquared() < 0.0001) {
+    Vector horizontalDirection = look.getDirection().setY(0);
+    if (horizontalDirection.lengthSquared() < 0.0001) {
+      horizontalDirection = scorer.getVelocity().clone().setY(0);
+    }
+    if (horizontalDirection.lengthSquared() < 0.0001) {
       return;
     }
-    direction.normalize().multiply(GOAL_CELEBRATION_SPEED);
-    direction.setY(GOAL_CELEBRATION_DOWNWARD_VELOCITY);
-    mount.setVelocity(direction);
+    horizontalDirection.normalize();
+
+    Vector mountVelocity = horizontalDirection.clone().multiply(GOAL_CELEBRATION_SPEED);
+    mountVelocity.setY(GOAL_CELEBRATION_DOWNWARD_VELOCITY);
+    mount.setVelocity(mountVelocity);
     Location mountLoc = mount.getLocation();
-    mountLoc.setDirection(direction);
+    mountLoc.setDirection(horizontalDirection);
     mount.teleport(mountLoc);
   }
 
@@ -1111,24 +1122,13 @@ public class PlayerHockeyListener implements Listener {
       mount.removePassenger(player);
       clearGoalCelebrationMount(rinkKey);
       this.dismissedGoalCelebrationRinks.add(rinkKey);
+      resetShiftChargeState(player);
     }
   }
 
   private void updateSpectatorCameras() {
-    Set<String> activeRinks = new HashSet<>();
     for (Rink rink : this.lobbyManager.getRinks()) {
-      activeRinks.add(rink.getName().toLowerCase());
       updateSpectatorCameraForRink(rink);
-    }
-
-    for (String rinkName : new HashSet<>(this.spectatorCamStands.keySet())) {
-      if (activeRinks.contains(rinkName)) {
-        continue;
-      }
-      ArmorStand stand = this.spectatorCamStands.remove(rinkName);
-      if (stand != null && stand.isValid()) {
-        stand.remove();
-      }
     }
   }
 
@@ -1156,7 +1156,7 @@ public class PlayerHockeyListener implements Listener {
 
   private ArmorStand ensureSpectatorCamera(Rink rink) {
     String key = rink.getName().toLowerCase();
-    ArmorStand existing = this.spectatorCamStands.get(key);
+    ArmorStand existing = rink.getSpectatorCamera();
     if (existing != null && existing.isValid()) {
       return existing;
     }
@@ -1175,15 +1175,23 @@ public class PlayerHockeyListener implements Listener {
         }
       }
       configureSpectatorCameraStand(keep, key);
-      this.spectatorCamStands.put(key, keep);
+      rink.setSpectatorCamera(keep);
       return keep;
     }
 
     ArmorStand stand = spawn.getWorld().spawn(spawn, ArmorStand.class, armorStand -> {
       configureSpectatorCameraStand(armorStand, key);
     });
-    this.spectatorCamStands.put(key, stand);
+    rink.setSpectatorCamera(stand);
     return stand;
+  }
+
+  private void resetShiftChargeState(Player player) {
+    if (player == null) {
+      return;
+    }
+    this.charges.remove(player.getUniqueId());
+    player.setExp(0.0f);
   }
 
   private List<ArmorStand> findExistingSpectatorCameras(Location baseLocation, String rinkKey) {
