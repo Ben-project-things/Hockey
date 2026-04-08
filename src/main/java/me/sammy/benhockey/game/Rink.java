@@ -326,7 +326,7 @@ public class Rink {
     ItemMeta bootMeta = boots.getItemMeta();
     bootMeta.setDisplayName("§bGoalie Skates");
     bootMeta.setUnbreakable(true);
-    bootMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+    bootMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_ATTRIBUTES);
     boots.setItemMeta(bootMeta);
 
     p.getInventory().setHelmet(mask);

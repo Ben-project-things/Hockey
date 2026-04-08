@@ -15,11 +15,8 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.Horse;
-import org.bukkit.entity.Pig;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
-import org.bukkit.entity.Strider;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -43,7 +40,6 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.EulerAngle;
 import org.bukkit.util.Vector;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -169,12 +165,7 @@ public class PlayerHockeyListener implements Listener {
     if (!this.lobbyManager.isPlayerAKeeper(player) || !player.isSneaking()) {
       return;
     }
-
-    e.getTo();
-    if (e.getFrom().distanceSquared(e.getTo()) < 0.0004) {
-      return;
-    }
-    ensureAndPositionGoaliePads(player);
+    // Goalie pad armor stand visuals are disabled to prevent runaway spawning.
   }
 
   @EventHandler
@@ -198,10 +189,13 @@ public class PlayerHockeyListener implements Listener {
 
     if (lobbyManager.isPlayerAKeeper(p)) {
       if (e.isSneaking()) {
-        ensureAndPositionGoaliePads(p);
+        // Intentionally disabled to prevent repeated armor stand spawning.
       } else {
-        clearGoaliePads(p.getUniqueId());
+        removeGoalCelebrationMountForPlayer(p);
       }
+    }
+    if (!e.isSneaking()) {
+      removeGoalCelebrationMountForPlayer(p);
     }
   }
 
@@ -951,7 +945,6 @@ public class PlayerHockeyListener implements Listener {
     enforceGoalieHalfLineRule();
 
     updateGoalCelebrationsAndTrails();
-    updateGoaliePads();
     updateSpectatorCameras();
   }
 
@@ -980,6 +973,7 @@ public class PlayerHockeyListener implements Listener {
 
       spawnGoalTrailForScorer(rink, scorer);
       ensureGoalCelebrationMount(rinkKey, scorer);
+      driveGoalCelebrationMount(scorer, this.activeGoalCelebrationMounts.get(rinkKey));
     }
 
     for (String rinkName : new HashSet<>(this.activeGoalCelebrationMounts.keySet())) {
@@ -996,29 +990,40 @@ public class PlayerHockeyListener implements Listener {
     if (world == null) {
       return;
     }
-    switch (trail) {
-      case FLAME:
-        world.spawnParticle(Particle.FLAME, base, 8, 0.25, 0.3, 0.25, 0.01);
-        break;
-      case TOTEM:
-        world.spawnParticle(Particle.TOTEM, base, 5, 0.22, 0.24, 0.22, 0.02);
-        break;
-      case RAINBOW:
-      default:
-        Particle.DustOptions[] rainbowDust = {
-            new Particle.DustOptions(org.bukkit.Color.RED, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.LIME, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.AQUA, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.BLUE, 1.25f),
-            new Particle.DustOptions(org.bukkit.Color.PURPLE, 1.25f)
-        };
-        Particle.DustOptions dust = rainbowDust[(this.goalTrailTick / 2) % rainbowDust.length];
-        this.goalTrailTick++;
-        world.spawnParticle(Particle.REDSTONE, base, 7, 0.2, 0.22, 0.2, 0.01, dust);
-        break;
+    CosmeticsManager.TrailParticle selected = trail.particle;
+    if (selected == CosmeticsManager.TrailParticle.NOTE) {
+      double noteColor = (this.goalTrailTick % 24) / 24.0;
+      this.goalTrailTick++;
+      world.spawnParticle(Particle.NOTE, base, 0, noteColor, 0, 0, 1.0);
+      return;
     }
+    if (selected == CosmeticsManager.TrailParticle.RAINBOW) {
+      Particle.DustOptions[] rainbowDust = {
+          new Particle.DustOptions(org.bukkit.Color.RED, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.LIME, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.AQUA, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.BLUE, 1.25f),
+          new Particle.DustOptions(org.bukkit.Color.PURPLE, 1.25f)
+      };
+      Particle.DustOptions dust = rainbowDust[(this.goalTrailTick / 2) % rainbowDust.length];
+      this.goalTrailTick++;
+      world.spawnParticle(Particle.REDSTONE, base, 7, 0.2, 0.22, 0.2, 0.01, dust);
+      return;
+    }
+    if (selected.dustOptions != null) {
+      world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
+              selected.offsetZ, selected.speed, selected.dustOptions);
+      return;
+    }
+    if (selected.dataMaterial != null) {
+      world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
+              selected.offsetZ, selected.speed, Bukkit.createBlockData(selected.dataMaterial));
+      return;
+    }
+    world.spawnParticle(selected.particle, base, selected.count, selected.offsetX, selected.offsetY,
+            selected.offsetZ, selected.speed);
   }
 
   private void ensureGoalCelebrationMount(String rinkKey, Player scorer) {
@@ -1045,30 +1050,23 @@ public class PlayerHockeyListener implements Listener {
       return null;
     }
 
-    CosmeticsManager.GoalCelebrationType type = getCosmeticsManager().getGoalCelebrationType(scorer.getUniqueId());
-    switch (type) {
-      case HORSE:
-        return world.spawn(spawnLoc, Horse.class, horse -> {
-          horse.setTamed(true);
-          horse.setAdult();
-          horse.setDomestication(100);
-          horse.setInvulnerable(true);
-          horse.setSilent(true);
-        });
-      case STRIDER:
-        return world.spawn(spawnLoc, Strider.class, strider -> {
-          strider.setSaddle(true);
-          strider.setInvulnerable(true);
-          strider.setSilent(true);
-        });
-      case PIG:
-      default:
-        return world.spawn(spawnLoc, Pig.class, pig -> {
-          pig.setSaddle(true);
-          pig.setInvulnerable(true);
-          pig.setSilent(true);
-        });
+    CosmeticsManager.GoalCelebrationOption type = getCosmeticsManager().getGoalCelebrationType(scorer.getUniqueId());
+    Entity mount = world.spawnEntity(spawnLoc, type.entityType);
+    getCosmeticsManager().configureCelebrationMount(mount);
+    return mount;
+  }
+
+  private void driveGoalCelebrationMount(Player scorer, Entity mount) {
+    if (mount == null || !mount.isValid() || scorer == null || !scorer.isOnline()) {
+      return;
     }
+    Location look = scorer.getLocation();
+    Vector direction = look.getDirection().setY(0);
+    if (direction.lengthSquared() < 0.0001) {
+      return;
+    }
+    direction.normalize().multiply(0.55);
+    mount.setVelocity(direction);
   }
 
   private void clearGoalCelebrationMount(String rinkKey) {
@@ -1678,99 +1676,6 @@ public class PlayerHockeyListener implements Listener {
 
     this.recentShotOnTargetCreditMillis.put(slimeId, now);
     rink.addShotOnTarget(shooter);
-  }
-
-  private void updateGoaliePads() {
-    Set<UUID> activePadGoalies = new HashSet<>();
-    for (Player online : Bukkit.getOnlinePlayers()) {
-      if (!this.lobbyManager.isPlayerAKeeper(online) || !online.isSneaking()) {
-        continue;
-      }
-
-      Rink rink = this.lobbyManager.getPlayerRink(online);
-      if (rink == null) {
-        continue;
-      }
-
-      activePadGoalies.add(online.getUniqueId());
-      ensureAndPositionGoaliePads(online);
-    }
-
-    for (UUID goalieId : new HashSet<>(this.goaliePadStands.keySet())) {
-      if (!activePadGoalies.contains(goalieId)) {
-        clearGoaliePads(goalieId);
-      }
-    }
-  }
-
-  private void ensureAndPositionGoaliePads(Player goalie) {
-    List<ArmorStand> pads = this.goaliePadStands.get(goalie.getUniqueId());
-    if (pads == null) {
-      pads = new ArrayList<>();
-      pads.add(spawnGoaliePad(goalie.getLocation()));
-      pads.add(spawnGoaliePad(goalie.getLocation()));
-      this.goaliePadStands.put(goalie.getUniqueId(), pads);
-    }
-    if (pads.size() != 2) {
-      clearGoaliePads(goalie.getUniqueId());
-      pads = new ArrayList<>();
-      pads.add(spawnGoaliePad(goalie.getLocation()));
-      pads.add(spawnGoaliePad(goalie.getLocation()));
-      this.goaliePadStands.put(goalie.getUniqueId(), pads);
-    }
-
-    Vector forward = goalie.getLocation().getDirection().setY(0);
-    if (forward.lengthSquared() < 0.0001) {
-      forward = new Vector(0, 0, 1);
-    }
-    forward.normalize();
-    Vector left = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
-    Vector goalieVelocity = goalie.getVelocity().clone().setY(0);
-    if (goalieVelocity.lengthSquared() > 0.0001) {
-      goalieVelocity.multiply(0.8);
-    }
-
-    Location base = goalie.getLocation().clone()
-            .add(forward.clone().multiply(0.40))
-            .add(goalieVelocity);
-    float padYaw = goalie.getLocation().getYaw();
-
-    Location leftPad = base.clone().add(left.clone().multiply(0.18));
-    Location rightPad = base.clone().subtract(left.clone().multiply(0.18));
-    leftPad.setYaw(padYaw + 16f);
-    rightPad.setYaw(padYaw - 16f);
-    leftPad.setPitch(0f);
-    rightPad.setPitch(0f);
-    pads.get(0).teleport(leftPad);
-    pads.get(1).teleport(rightPad);
-    ItemStack padBoots = getCosmeticsManager().createGoaliePadBoots(goalie.getUniqueId());
-    for (ArmorStand pad : pads) {
-      pad.getEquipment().setBoots(padBoots.clone());
-    }
-    for (ArmorStand pad : pads) {
-      pad.setHeadPose(new EulerAngle(0, 0, 0));
-      pad.setBodyPose(new EulerAngle(0, 0, 0));
-      pad.setRightArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
-      pad.setLeftArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
-    }
-  }
-
-  private ArmorStand spawnGoaliePad(Location location) {
-    ArmorStand stand = location.getWorld().spawn(location, ArmorStand.class, armorStand -> {
-      armorStand.setInvisible(true);
-      armorStand.setGravity(false);
-      armorStand.setMarker(true);
-      armorStand.setSmall(false);
-      armorStand.setBasePlate(false);
-      armorStand.setArms(true);
-      armorStand.setSilent(true);
-      armorStand.setInvulnerable(true);
-      armorStand.setCollidable(false);
-      armorStand.getEquipment().setBoots(new ItemStack(Material.IRON_BOOTS));
-      armorStand.getEquipment().setItemInMainHand(null);
-      armorStand.getEquipment().setItemInOffHand(null);
-    });
-    return stand;
   }
 
   private void clearGoaliePads(UUID goalieId) {
