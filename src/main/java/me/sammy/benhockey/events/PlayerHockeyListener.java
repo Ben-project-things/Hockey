@@ -1098,8 +1098,7 @@ public class PlayerHockeyListener implements Listener {
     Vector mountVelocity = horizontalDirection.clone().multiply(GOAL_CELEBRATION_SPEED);
     mountVelocity.setY(GOAL_CELEBRATION_DOWNWARD_VELOCITY);
     mount.setVelocity(mountVelocity);
-    Location mountLoc = mount.getLocation();
-    mountLoc.setDirection(horizontalDirection);
+    mount.setRotation(0.0f, look.getYaw());
   }
 
   private void clearGoalCelebrationMount(String rinkKey) {
