@@ -5,6 +5,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
@@ -49,6 +50,7 @@ public class Rink {
   private GameState state;
   private GameScoreboard scoreboard;
   private UUID spectatorFocusPlayerId;
+  private ArmorStand spectatorCamera;
   private final JavaPlugin plugin;
 
   private final Location centerIce;
@@ -86,6 +88,7 @@ public class Rink {
     this.state = GameState.PREGAME;
     this.scoreboard = new GameScoreboard(this);
     this.spectatorFocusPlayerId = null;
+    this.spectatorCamera = null;
   }
 
   /**
@@ -973,5 +976,17 @@ public class Rink {
 
   public void clearSpectatorFocusPlayer() {
     this.spectatorFocusPlayerId = null;
+  }
+
+  public ArmorStand getSpectatorCamera() {
+    return this.spectatorCamera;
+  }
+
+  public void setSpectatorCamera(ArmorStand spectatorCamera) {
+    this.spectatorCamera = spectatorCamera;
+  }
+
+  public void clearSpectatorCamera() {
+    this.spectatorCamera = null;
   }
 }
