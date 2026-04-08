@@ -84,6 +84,7 @@ public class PlayerHockeyListener implements Listener {
   private static final double GOALIE_BOUNCE_STRENGTH_MULTIPLIER = 0.82;
   private static final double GOALIE_BOUNCE_VERTICAL_MULTIPLIER = 0.90;
   private static final String SPECTATOR_CAMERA_TAG_PREFIX = "bh_spectator_cam_";
+
   private final LobbyManager lobbyManager;
   private final HashMap<UUID, Double> charges = new HashMap<>();
   private final JavaPlugin plugin;
@@ -99,7 +100,6 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
-  private final Set<UUID> releasedSpectatorCamera = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
@@ -132,7 +132,6 @@ public class PlayerHockeyListener implements Listener {
     clearGoalieGloveState(e.getPlayer().getUniqueId());
     clearGoaliePads(e.getPlayer().getUniqueId());
     this.recentGoalieBouncePlayer.values().removeIf(id -> id.equals(e.getPlayer().getUniqueId()));
-    this.releasedSpectatorCamera.remove(e.getPlayer().getUniqueId());
     removeGoalCelebrationMountForPlayer(e.getPlayer());
   }
 
@@ -162,7 +161,6 @@ public class PlayerHockeyListener implements Listener {
     if (message.startsWith("/join") || message.startsWith("/team") || message.startsWith("/goalie")) {
       setDangleMode(player, false);
       this.resetPower(player);
-      this.releasedSpectatorCamera.remove(player.getUniqueId());
     }
   }
 
@@ -177,12 +175,6 @@ public class PlayerHockeyListener implements Listener {
   @EventHandler
   public void onSneak(PlayerToggleSneakEvent e) {
     Player p = e.getPlayer();
-    removeGoalCelebrationMountForPlayer(p);
-    if (p.getGameMode() == GameMode.SPECTATOR && !this.lobbyManager.isPlayerInLobby(p)) {
-      p.setSpectatorTarget(null);
-      this.releasedSpectatorCamera.add(p.getUniqueId());
-    }
-
     if (lobbyManager.isPlayerInLobby(p)) {
       return;
     }
@@ -1097,7 +1089,6 @@ public class PlayerHockeyListener implements Listener {
     mount.setVelocity(mountVelocity);
     Location mountLoc = mount.getLocation();
     mountLoc.setDirection(horizontalDirection);
-    mount.teleport(mountLoc);
   }
 
   private void clearGoalCelebrationMount(String rinkKey) {
@@ -1142,16 +1133,6 @@ public class PlayerHockeyListener implements Listener {
     Location focusTarget = getSpectatorFocusLocation(rink);
     setYawPitchToward(cameraBase, focusTarget);
     camera.teleport(cameraBase);
-
-    for (Player player : rink.getAllPlayers()) {
-      if (player.getGameMode() == GameMode.SPECTATOR) {
-        if (!this.releasedSpectatorCamera.contains(player.getUniqueId())) {
-          player.setSpectatorTarget(camera);
-        }
-      } else {
-        this.releasedSpectatorCamera.remove(player.getUniqueId());
-      }
-    }
   }
 
   private ArmorStand ensureSpectatorCamera(Rink rink) {
