@@ -2,9 +2,13 @@ package me.sammy.benhockey.cosmetics;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +22,8 @@ import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -40,7 +46,7 @@ public class CosmeticsManager {
   private final Map<UUID, TrailParticle> playerParticles = new HashMap<>();
   private final Map<UUID, GoaliePadType> playerGoaliePads = new HashMap<>();
   private final Map<UUID, GoalTrailType> playerGoalTrails = new HashMap<>();
-  private final Map<UUID, GoalCelebrationType> playerGoalCelebrations = new HashMap<>();
+  private final Map<UUID, String> playerGoalCelebrations = new HashMap<>();
   private int rainbowTick = 0;
   private int noteTick = 0;
 
@@ -63,7 +69,7 @@ public class CosmeticsManager {
     this.playerGoalTrails.put(playerId,
             GoalTrailType.fromKey(this.cosmeticsConfig.getString(base + ".goaltrail", GoalTrailType.RAINBOW.key)));
     this.playerGoalCelebrations.put(playerId,
-            GoalCelebrationType.fromKey(this.cosmeticsConfig.getString(base + ".goalcelebration", GoalCelebrationType.PIG.key)));
+            this.cosmeticsConfig.getString(base + ".goalcelebration", getGoalCelebrationOptions().get(0).key));
   }
 
   public void saveAll() {
@@ -102,8 +108,9 @@ public class CosmeticsManager {
     return this.playerGoalTrails.getOrDefault(playerId, GoalTrailType.RAINBOW);
   }
 
-  public GoalCelebrationType getGoalCelebrationType(UUID playerId) {
-    return this.playerGoalCelebrations.getOrDefault(playerId, GoalCelebrationType.PIG);
+  public GoalCelebrationOption getGoalCelebrationType(UUID playerId) {
+    String key = this.playerGoalCelebrations.get(playerId);
+    return GoalCelebrationOption.fromKey(key);
   }
 
   public void setStickType(Player player, StickType type) {
@@ -130,8 +137,8 @@ public class CosmeticsManager {
     saveAll();
   }
 
-  public void setGoalCelebrationType(Player player, GoalCelebrationType celebrationType) {
-    this.playerGoalCelebrations.put(player.getUniqueId(), celebrationType);
+  public void setGoalCelebrationType(Player player, GoalCelebrationOption celebrationType) {
+    this.playerGoalCelebrations.put(player.getUniqueId(), celebrationType.key);
     savePlayer(player.getUniqueId());
     saveAll();
   }
@@ -180,7 +187,7 @@ public class CosmeticsManager {
     if (meta instanceof LeatherArmorMeta && type.leatherColor != null) {
       ((LeatherArmorMeta) meta).setColor(type.leatherColor);
     }
-    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_DYE);
     boots.setItemMeta(meta);
     return boots;
   }
@@ -408,18 +415,37 @@ public class CosmeticsManager {
   }
 
   public enum GoalTrailType {
-    RAINBOW("rainbow", Material.BEACON, "Rainbow Goal Trail"),
-    FLAME("flame", Material.BLAZE_POWDER, "Flame Goal Trail"),
-    TOTEM("totem", Material.TOTEM_OF_UNDYING, "Totem Goal Trail");
+    INSTANT("instantspell", Material.FIREWORK_ROCKET, "Default Goal Trail", TrailParticle.INSTANT),
+    FLAME("flame", Material.FLINT_AND_STEEL, "Flame Goal Trail", TrailParticle.FLAME),
+    CRIT("crit", Material.GOLDEN_SWORD, "Crit Goal Trail", TrailParticle.CRIT),
+    BLUE_CRIT("bluecrit", Material.DIAMOND_SWORD, "Blue Crit Goal Trail", TrailParticle.BLUE_CRIT),
+    EMERALD("emerald", Material.EMERALD, "Emerald Goal Trail", TrailParticle.EMERALD),
+    SNOW("snow", Material.SNOWBALL, "Snow Goal Trail", TrailParticle.SNOW),
+    NOTE("note", Material.JUKEBOX, "Note Goal Trail", TrailParticle.NOTE),
+    PURPLE("purple", Material.PURPLE_STAINED_GLASS, "Purple Goal Trail", TrailParticle.PURPLE),
+    RAINBOW("rainbow", Material.BEACON, "Rainbow Goal Trail", TrailParticle.RAINBOW),
+    HEART("heart", Material.APPLE, "Heart Goal Trail", TrailParticle.HEART),
+    SPLASH("splash", Material.WATER_BUCKET, "Splash Goal Trail", TrailParticle.SPLASH),
+    SLIME("slime", Material.SLIME_BALL, "Slime Goal Trail", TrailParticle.SLIME),
+    LAVA("lava", Material.LAVA_BUCKET, "Lava Goal Trail", TrailParticle.LAVA),
+    CLOUD("cloud", Material.WHITE_WOOL, "Cloud Goal Trail", TrailParticle.CLOUD),
+    RED("red", Material.RED_WOOL, "Red Goal Trail", TrailParticle.RED),
+    GREEN("green", Material.GREEN_WOOL, "Green Goal Trail", TrailParticle.GREEN),
+    ORANGE("orange", Material.ORANGE_WOOL, "Orange Goal Trail", TrailParticle.ORANGE),
+    YELLOW("yellow", Material.YELLOW_WOOL, "Yellow Goal Trail", TrailParticle.YELLOW),
+    BLUE("blue", Material.BLUE_WOOL, "Blue Goal Trail", TrailParticle.BLUE),
+    INDIGO("indigo", Material.PURPLE_WOOL, "Indigo Goal Trail", TrailParticle.INDIGO);
 
     public final String key;
     public final Material icon;
     public final String fancyName;
+    public final TrailParticle particle;
 
-    GoalTrailType(String key, Material icon, String fancyName) {
+    GoalTrailType(String key, Material icon, String fancyName, TrailParticle particle) {
       this.key = key;
       this.icon = icon;
       this.fancyName = fancyName;
+      this.particle = particle;
     }
 
     public static GoalTrailType fromKey(String key) {
@@ -432,28 +458,73 @@ public class CosmeticsManager {
     }
   }
 
-  public enum GoalCelebrationType {
-    PIG("pig", Material.CARROT_ON_A_STICK, "Pig Ride Celebration"),
-    HORSE("horse", Material.SADDLE, "Horse Ride Celebration"),
-    STRIDER("strider", Material.WARPED_FUNGUS_ON_A_STICK, "Strider Ride Celebration");
+  public static class GoalCelebrationOption {
+    private static final List<GoalCelebrationOption> VALUES = buildValues();
 
     public final String key;
+    public final EntityType entityType;
     public final Material icon;
     public final String fancyName;
 
-    GoalCelebrationType(String key, Material icon, String fancyName) {
+    GoalCelebrationOption(String key, EntityType entityType, Material icon, String fancyName) {
       this.key = key;
+      this.entityType = entityType;
       this.icon = icon;
       this.fancyName = fancyName;
     }
 
-    public static GoalCelebrationType fromKey(String key) {
-      for (GoalCelebrationType type : values()) {
-        if (type.key.equalsIgnoreCase(key)) {
+    public static List<GoalCelebrationOption> values() {
+      return VALUES;
+    }
+
+    public static GoalCelebrationOption fromKey(String key) {
+      for (GoalCelebrationOption type : VALUES) {
+        if (key != null && type.key.equalsIgnoreCase(key)) {
           return type;
         }
       }
-      return PIG;
+      return VALUES.get(0);
     }
+
+    private static List<GoalCelebrationOption> buildValues() {
+      List<GoalCelebrationOption> options = new ArrayList<>();
+      for (EntityType type : EntityType.values()) {
+        if (!type.isAlive() || !type.isSpawnable()) {
+          continue;
+        }
+        Material icon = Material.matchMaterial(type.name() + "_SPAWN_EGG");
+        if (icon == null) {
+          continue;
+        }
+        String pretty = type.name().toLowerCase().replace('_', ' ');
+        StringBuilder label = new StringBuilder();
+        for (String part : pretty.split(" ")) {
+          if (part.isEmpty()) {
+            continue;
+          }
+          label.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1)).append(" ");
+        }
+        options.add(new GoalCelebrationOption(type.name().toLowerCase(), type, icon,
+                label.toString().trim() + " Ride Celebration"));
+      }
+      Collections.sort(options, Comparator.comparing(option -> option.fancyName));
+      return Collections.unmodifiableList(options);
+    }
+  }
+
+  public static List<GoalCelebrationOption> getGoalCelebrationOptions() {
+    return GoalCelebrationOption.values();
+  }
+
+  public void configureCelebrationMount(Entity entity) {
+    if (!(entity instanceof LivingEntity)) {
+      return;
+    }
+    LivingEntity living = (LivingEntity) entity;
+    living.setAI(false);
+    living.setInvulnerable(true);
+    living.setSilent(true);
+    living.setCollidable(false);
+    living.setPersistent(false);
   }
 }

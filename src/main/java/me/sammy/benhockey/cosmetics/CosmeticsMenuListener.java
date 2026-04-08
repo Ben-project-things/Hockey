@@ -138,14 +138,14 @@ public class CosmeticsMenuListener implements Listener {
     fillRow(inv, 5, Material.BLACK_STAINED_GLASS_PANE, " ");
 
     int slot = 0;
-    for (CosmeticsManager.GoalCelebrationType celebrationType : CosmeticsManager.GoalCelebrationType.values()) {
+    for (CosmeticsManager.GoalCelebrationOption celebrationType : CosmeticsManager.getGoalCelebrationOptions()) {
       if (slot >= 45) {
         break;
       }
       inv.setItem(slot++, makeItem(celebrationType.icon, "&6" + celebrationType.fancyName, list("&7Click to equip"), false));
     }
 
-    CosmeticsManager.GoalCelebrationType selected = this.cosmeticsManager.getGoalCelebrationType(player.getUniqueId());
+    CosmeticsManager.GoalCelebrationOption selected = this.cosmeticsManager.getGoalCelebrationType(player.getUniqueId());
     inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
     inv.setItem(49, makeItem(selected.icon, "&aCurrent: &f" + selected.fancyName,
             list("&7Your selected goal celebration."), true));
@@ -238,8 +238,8 @@ public class CosmeticsMenuListener implements Listener {
         openMainMenu(player);
         return;
       }
-      if (slot < CosmeticsManager.GoalCelebrationType.values().length && slot < 45) {
-        CosmeticsManager.GoalCelebrationType selected = CosmeticsManager.GoalCelebrationType.values()[slot];
+      if (slot < CosmeticsManager.getGoalCelebrationOptions().size() && slot < 45) {
+        CosmeticsManager.GoalCelebrationOption selected = CosmeticsManager.getGoalCelebrationOptions().get(slot);
         this.cosmeticsManager.setGoalCelebrationType(player, selected);
         player.sendMessage("§6[§bBH§6] §aSelected goal celebration: §f" + selected.fancyName);
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
@@ -321,7 +321,7 @@ public class CosmeticsMenuListener implements Listener {
       meta.addEnchant(org.bukkit.enchantments.Enchantment.KNOCKBACK, 1, true);
       meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
     }
-    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_DYE);
     boots.setItemMeta(meta);
     return boots;
   }
