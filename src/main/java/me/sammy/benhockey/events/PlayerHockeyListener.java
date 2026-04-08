@@ -15,8 +15,11 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Horse;
+import org.bukkit.entity.Pig;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
+import org.bukkit.entity.Strider;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -77,6 +80,7 @@ public class PlayerHockeyListener implements Listener {
   private static final double SHIFT_LIFT_BASE_Y = 0.6;
   private static final double SHIFT_LIFT_SCALE_Y = 0.25;
   private static final int BOARD_BOUNCE_NO_DAMAGE_TICKS = 15;
+  private static final long GOALIE_OWN_CLEARANCE_NO_REGLOVE_MS = 1200L;
   private final LobbyManager lobbyManager;
   private final HashMap<UUID, Double> charges = new HashMap<>();
   private final JavaPlugin plugin;
@@ -91,6 +95,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> goalieGloveReleaseCooldownMillis = new HashMap<>();
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, ArmorStand> spectatorCamStands = new HashMap<>();
+  private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<UUID> releasedSpectatorCamera = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
@@ -100,6 +105,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> suppressGroundBounceUntilMillis = new HashMap<>();
   private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
   private final Map<UUID, UUID> goalieOwnHitNoGlovePlayer = new HashMap<>();
+  private int goalTrailTick = 0;
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
   private static final String HOCKEY_STICK_NAME = "§aHockey Stick";
   private static final String GOALIE_STICK_NAME = "§bGoalie Stick";
@@ -124,6 +130,7 @@ public class PlayerHockeyListener implements Listener {
     clearGoaliePads(e.getPlayer().getUniqueId());
     this.recentGoalieBouncePlayer.values().removeIf(id -> id.equals(e.getPlayer().getUniqueId()));
     this.releasedSpectatorCamera.remove(e.getPlayer().getUniqueId());
+    removeGoalCelebrationMountForPlayer(e.getPlayer());
   }
 
   @EventHandler
@@ -503,7 +510,7 @@ public class PlayerHockeyListener implements Listener {
         return;
       }
       if (goalie) {
-        this.goalieOwnHitNoGloveUntilMillis.put(slime.getUniqueId(), nowMillis() + 650L);
+        this.goalieOwnHitNoGloveUntilMillis.put(slime.getUniqueId(), nowMillis() + GOALIE_OWN_CLEARANCE_NO_REGLOVE_MS);
         this.goalieOwnHitNoGlovePlayer.put(slime.getUniqueId(), player.getUniqueId());
       }
 
@@ -661,7 +668,7 @@ public class PlayerHockeyListener implements Listener {
     updateGoalieGloveIndicator(goalie, true);
 
     BukkitTask task = new BukkitRunnable() {
-      int seconds = 3;
+      int ticksLeft = 60;
 
       @Override
       public void run() {
@@ -671,7 +678,7 @@ public class PlayerHockeyListener implements Listener {
           return;
         }
 
-        if (seconds == 0) {
+        if (ticksLeft <= 0) {
           if (glovedGoalies.contains(goalieId)) {
             dropGlovedPuck(goalie);
             this.cancel();
@@ -679,12 +686,15 @@ public class PlayerHockeyListener implements Listener {
           }
         }
 
+        double seconds = Math.max(0.0, ticksLeft / 20.0);
         goalie.spigot().sendMessage(ChatMessageType.ACTION_BAR,
-                TextComponent.fromLegacyText("§bPuck glove: §f" + seconds + "s"));
-        goalie.playSound(goalie.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 20f, 1f);
-        seconds--;
+                TextComponent.fromLegacyText("§bPuck glove: §f" + String.format("%.1f", seconds) + "s"));
+        if (ticksLeft % 20 == 0) {
+          goalie.playSound(goalie.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 20f, 1f);
+        }
+        ticksLeft -= 2;
       }
-    }.runTaskTimer(plugin, 0L, 20L);
+    }.runTaskTimer(plugin, 0L, 2L);
 
     this.gloveTimers.put(goalieId, task);
   }
@@ -714,6 +724,8 @@ public class PlayerHockeyListener implements Listener {
     this.suppressGroundBounceUntilMillis.put(puck.getUniqueId(), nowMillis() + 1200L);
     puck.setNoDamageTicks(0);
     this.goalieGloveReleaseCooldownMillis.put(id, nowMillis() + (GOALIE_GLOVE_REGRAB_COOLDOWN_TICKS * 50L));
+    this.goalieOwnHitNoGloveUntilMillis.put(puck.getUniqueId(), nowMillis() + GOALIE_OWN_CLEARANCE_NO_REGLOVE_MS);
+    this.goalieOwnHitNoGlovePlayer.put(puck.getUniqueId(), id);
   }
 
   private void clearGoalieGloveState(UUID goalieId) {
@@ -938,8 +950,149 @@ public class PlayerHockeyListener implements Listener {
 
     enforceGoalieHalfLineRule();
 
+    updateGoalCelebrationsAndTrails();
     updateGoaliePads();
     updateSpectatorCameras();
+  }
+
+  private void updateGoalCelebrationsAndTrails() {
+    Set<String> activeRinks = new HashSet<>();
+    for (Rink rink : this.lobbyManager.getRinks()) {
+      String rinkKey = rink.getName().toLowerCase();
+      activeRinks.add(rinkKey);
+      if (rink.getGameState() != GameState.GAME || rink.getGame() == null) {
+        clearGoalCelebrationMount(rinkKey);
+        continue;
+      }
+
+      int intermissionLeft = rink.getGame().getIntermissionTimeLeft();
+      String intermissionLabel = rink.getGame().getIntermissionLabel();
+      if (intermissionLeft <= 0 || !"Faceoff".equalsIgnoreCase(intermissionLabel)) {
+        clearGoalCelebrationMount(rinkKey);
+        continue;
+      }
+
+      Player scorer = rink.getGame().getMostRecentGoalScorer();
+      if (scorer == null || !scorer.isOnline()) {
+        clearGoalCelebrationMount(rinkKey);
+        continue;
+      }
+
+      spawnGoalTrailForScorer(rink, scorer);
+      ensureGoalCelebrationMount(rinkKey, scorer);
+    }
+
+    for (String rinkName : new HashSet<>(this.activeGoalCelebrationMounts.keySet())) {
+      if (!activeRinks.contains(rinkName)) {
+        clearGoalCelebrationMount(rinkName);
+      }
+    }
+  }
+
+  private void spawnGoalTrailForScorer(Rink rink, Player scorer) {
+    CosmeticsManager.GoalTrailType trail = getCosmeticsManager().getGoalTrailType(scorer.getUniqueId());
+    Location base = scorer.getLocation().clone().add(0, 0.9, 0);
+    World world = base.getWorld();
+    if (world == null) {
+      return;
+    }
+    switch (trail) {
+      case FLAME:
+        world.spawnParticle(Particle.FLAME, base, 8, 0.25, 0.3, 0.25, 0.01);
+        break;
+      case TOTEM:
+        world.spawnParticle(Particle.TOTEM, base, 5, 0.22, 0.24, 0.22, 0.02);
+        break;
+      case RAINBOW:
+      default:
+        Particle.DustOptions[] rainbowDust = {
+            new Particle.DustOptions(org.bukkit.Color.RED, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.LIME, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.AQUA, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.BLUE, 1.25f),
+            new Particle.DustOptions(org.bukkit.Color.PURPLE, 1.25f)
+        };
+        Particle.DustOptions dust = rainbowDust[(this.goalTrailTick / 2) % rainbowDust.length];
+        this.goalTrailTick++;
+        world.spawnParticle(Particle.REDSTONE, base, 7, 0.2, 0.22, 0.2, 0.01, dust);
+        break;
+    }
+  }
+
+  private void ensureGoalCelebrationMount(String rinkKey, Player scorer) {
+    Entity existing = this.activeGoalCelebrationMounts.get(rinkKey);
+    if (existing != null && existing.isValid()) {
+      if (!existing.getPassengers().contains(scorer)) {
+        existing.addPassenger(scorer);
+      }
+      return;
+    }
+
+    Entity mount = spawnCelebrationMount(scorer);
+    if (mount == null) {
+      return;
+    }
+    this.activeGoalCelebrationMounts.put(rinkKey, mount);
+    mount.addPassenger(scorer);
+  }
+
+  private Entity spawnCelebrationMount(Player scorer) {
+    Location spawnLoc = scorer.getLocation().clone();
+    World world = spawnLoc.getWorld();
+    if (world == null) {
+      return null;
+    }
+
+    CosmeticsManager.GoalCelebrationType type = getCosmeticsManager().getGoalCelebrationType(scorer.getUniqueId());
+    switch (type) {
+      case HORSE:
+        return world.spawn(spawnLoc, Horse.class, horse -> {
+          horse.setTamed(true);
+          horse.setAdult();
+          horse.setDomestication(100);
+          horse.setInvulnerable(true);
+          horse.setSilent(true);
+        });
+      case STRIDER:
+        return world.spawn(spawnLoc, Strider.class, strider -> {
+          strider.setSaddle(true);
+          strider.setInvulnerable(true);
+          strider.setSilent(true);
+        });
+      case PIG:
+      default:
+        return world.spawn(spawnLoc, Pig.class, pig -> {
+          pig.setSaddle(true);
+          pig.setInvulnerable(true);
+          pig.setSilent(true);
+        });
+    }
+  }
+
+  private void clearGoalCelebrationMount(String rinkKey) {
+    Entity mount = this.activeGoalCelebrationMounts.remove(rinkKey);
+    if (mount == null || !mount.isValid()) {
+      return;
+    }
+    mount.eject();
+    mount.remove();
+  }
+
+  private void removeGoalCelebrationMountForPlayer(Player player) {
+    for (String rinkKey : new HashSet<>(this.activeGoalCelebrationMounts.keySet())) {
+      Entity mount = this.activeGoalCelebrationMounts.get(rinkKey);
+      if (mount == null || !mount.isValid()) {
+        this.activeGoalCelebrationMounts.remove(rinkKey);
+        continue;
+      }
+      if (!mount.getPassengers().contains(player)) {
+        continue;
+      }
+      mount.removePassenger(player);
+      clearGoalCelebrationMount(rinkKey);
+    }
   }
 
   private void updateSpectatorCameras() {
@@ -1734,18 +1887,38 @@ public class PlayerHockeyListener implements Listener {
         toCenter = new Vector(0, 0, 1);
       }
       toCenter.normalize();
-      destination = teamBench.clone().add(toCenter.multiply(3.0));
-      destination.setY(player.getLocation().getY());
-      player.sendMessage("§6[§bBH§6] §aYou stepped off your bench.");
+      destination = findSafeBenchExit(teamBench, toCenter);
     } else {
-      destination = teamBench.clone();
-      player.sendMessage("§6[§bBH§6] §aYou hopped onto your bench.");
+      destination = teamBench.clone().add(0, 0.1, 0);
     }
 
+    destination.setX(destination.getBlockX() + 0.5);
+    destination.setZ(destination.getBlockZ() + 0.5);
     destination.setYaw(player.getLocation().getYaw());
     destination.setPitch(player.getLocation().getPitch());
+    player.setNoDamageTicks(20);
+    player.setFallDistance(0f);
     player.teleport(destination);
     return true;
+  }
+
+  private Location findSafeBenchExit(Location teamBench, Vector toCenter) {
+    Vector direction = toCenter.clone();
+    if (direction.lengthSquared() < 0.0001) {
+      direction = new Vector(0, 0, 1);
+    }
+    direction.normalize();
+
+    for (double distance = 4.0; distance <= 6.0; distance += 0.5) {
+      Location attempt = teamBench.clone().add(direction.clone().multiply(distance)).add(0, 0.1, 0);
+      Block feet = attempt.getBlock();
+      Block head = feet.getRelative(BlockFace.UP);
+      if (feet.isPassable() && head.isPassable()) {
+        return attempt;
+      }
+    }
+
+    return teamBench.clone().add(direction.multiply(4.5)).add(0, 0.1, 0);
   }
 
   private boolean isOnIceSurface(Player player) {

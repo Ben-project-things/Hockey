@@ -39,6 +39,8 @@ public class CosmeticsManager {
   private final Map<UUID, StickType> playerStickTypes = new HashMap<>();
   private final Map<UUID, TrailParticle> playerParticles = new HashMap<>();
   private final Map<UUID, GoaliePadType> playerGoaliePads = new HashMap<>();
+  private final Map<UUID, GoalTrailType> playerGoalTrails = new HashMap<>();
+  private final Map<UUID, GoalCelebrationType> playerGoalCelebrations = new HashMap<>();
   private int rainbowTick = 0;
   private int noteTick = 0;
 
@@ -58,6 +60,10 @@ public class CosmeticsManager {
             TrailParticle.fromKey(this.cosmeticsConfig.getString(base + ".particle", TrailParticle.EMERALD.key)));
     this.playerGoaliePads.put(playerId,
             GoaliePadType.fromKey(this.cosmeticsConfig.getString(base + ".goaliepad", GoaliePadType.IRON.key)));
+    this.playerGoalTrails.put(playerId,
+            GoalTrailType.fromKey(this.cosmeticsConfig.getString(base + ".goaltrail", GoalTrailType.RAINBOW.key)));
+    this.playerGoalCelebrations.put(playerId,
+            GoalCelebrationType.fromKey(this.cosmeticsConfig.getString(base + ".goalcelebration", GoalCelebrationType.PIG.key)));
   }
 
   public void saveAll() {
@@ -76,6 +82,8 @@ public class CosmeticsManager {
     this.cosmeticsConfig.set(base + ".stick", getStickType(playerId).key);
     this.cosmeticsConfig.set(base + ".particle", getParticle(playerId).key);
     this.cosmeticsConfig.set(base + ".goaliepad", getGoaliePadType(playerId).key);
+    this.cosmeticsConfig.set(base + ".goaltrail", getGoalTrailType(playerId).key);
+    this.cosmeticsConfig.set(base + ".goalcelebration", getGoalCelebrationType(playerId).key);
   }
 
   public StickType getStickType(UUID playerId) {
@@ -88,6 +96,14 @@ public class CosmeticsManager {
 
   public GoaliePadType getGoaliePadType(UUID playerId) {
     return this.playerGoaliePads.getOrDefault(playerId, GoaliePadType.IRON);
+  }
+
+  public GoalTrailType getGoalTrailType(UUID playerId) {
+    return this.playerGoalTrails.getOrDefault(playerId, GoalTrailType.RAINBOW);
+  }
+
+  public GoalCelebrationType getGoalCelebrationType(UUID playerId) {
+    return this.playerGoalCelebrations.getOrDefault(playerId, GoalCelebrationType.PIG);
   }
 
   public void setStickType(Player player, StickType type) {
@@ -104,6 +120,18 @@ public class CosmeticsManager {
 
   public void setGoaliePadType(Player player, GoaliePadType padType) {
     this.playerGoaliePads.put(player.getUniqueId(), padType);
+    savePlayer(player.getUniqueId());
+    saveAll();
+  }
+
+  public void setGoalTrailType(Player player, GoalTrailType trailType) {
+    this.playerGoalTrails.put(player.getUniqueId(), trailType);
+    savePlayer(player.getUniqueId());
+    saveAll();
+  }
+
+  public void setGoalCelebrationType(Player player, GoalCelebrationType celebrationType) {
+    this.playerGoalCelebrations.put(player.getUniqueId(), celebrationType);
     savePlayer(player.getUniqueId());
     saveAll();
   }
@@ -152,6 +180,7 @@ public class CosmeticsManager {
     if (meta instanceof LeatherArmorMeta && type.leatherColor != null) {
       ((LeatherArmorMeta) meta).setColor(type.leatherColor);
     }
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
     boots.setItemMeta(meta);
     return boots;
   }
@@ -375,6 +404,56 @@ public class CosmeticsManager {
         }
       }
       return IRON;
+    }
+  }
+
+  public enum GoalTrailType {
+    RAINBOW("rainbow", Material.BEACON, "Rainbow Goal Trail"),
+    FLAME("flame", Material.BLAZE_POWDER, "Flame Goal Trail"),
+    TOTEM("totem", Material.TOTEM_OF_UNDYING, "Totem Goal Trail");
+
+    public final String key;
+    public final Material icon;
+    public final String fancyName;
+
+    GoalTrailType(String key, Material icon, String fancyName) {
+      this.key = key;
+      this.icon = icon;
+      this.fancyName = fancyName;
+    }
+
+    public static GoalTrailType fromKey(String key) {
+      for (GoalTrailType type : values()) {
+        if (type.key.equalsIgnoreCase(key)) {
+          return type;
+        }
+      }
+      return RAINBOW;
+    }
+  }
+
+  public enum GoalCelebrationType {
+    PIG("pig", Material.CARROT_ON_A_STICK, "Pig Ride Celebration"),
+    HORSE("horse", Material.SADDLE, "Horse Ride Celebration"),
+    STRIDER("strider", Material.WARPED_FUNGUS_ON_A_STICK, "Strider Ride Celebration");
+
+    public final String key;
+    public final Material icon;
+    public final String fancyName;
+
+    GoalCelebrationType(String key, Material icon, String fancyName) {
+      this.key = key;
+      this.icon = icon;
+      this.fancyName = fancyName;
+    }
+
+    public static GoalCelebrationType fromKey(String key) {
+      for (GoalCelebrationType type : values()) {
+        if (type.key.equalsIgnoreCase(key)) {
+          return type;
+        }
+      }
+      return PIG;
     }
   }
 }

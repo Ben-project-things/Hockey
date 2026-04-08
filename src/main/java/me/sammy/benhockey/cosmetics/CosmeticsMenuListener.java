@@ -26,6 +26,8 @@ public class CosmeticsMenuListener implements Listener {
   private static final String STICKS_TITLE = "§b§lHockey Sticks";
   private static final String PARTICLE_TITLE = "§a§lParticle Selector";
   private static final String GOALIE_PADS_TITLE = "§3§lGoalie Pad Selector";
+  private static final String GOAL_TRAILS_TITLE = "§d§lGoal Particle Trails";
+  private static final String GOAL_CELEBRATION_TITLE = "§6§lGoal Celebrations";
   private final CosmeticsManager cosmeticsManager;
 
   public CosmeticsMenuListener(CosmeticsManager cosmeticsManager) {
@@ -37,8 +39,12 @@ public class CosmeticsMenuListener implements Listener {
     fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
     inv.setItem(11, makeItem(Material.STICK, "&b&lHockey Sticks",
             list("&7Customize your base stick."), true));
-    inv.setItem(13, makeItem(Material.IRON_BOOTS, "&3&lGoalie Pad Selector",
+    inv.setItem(12, makeItem(Material.IRON_BOOTS, "&3&lGoalie Pad Selector",
             list("&7Customize goalie pad boots."), false));
+    inv.setItem(13, makeItem(Material.FIREWORK_ROCKET, "&d&lGoal Particle Trails",
+            list("&7Trail shown after you score."), false));
+    inv.setItem(14, makeItem(Material.CARROT_ON_A_STICK, "&6&lGoal Celebrations",
+            list("&7Ride a mob after scoring."), false));
     inv.setItem(15, makeItem(Material.COMPASS, "&a&lParticle Selector",
             list("&7Choose your puck particle."), true));
     player.openInventory(inv);
@@ -106,6 +112,46 @@ public class CosmeticsMenuListener implements Listener {
     player.openInventory(inv);
   }
 
+  public void openGoalTrailMenu(Player player) {
+    Inventory inv = Bukkit.createInventory(null, 54, GOAL_TRAILS_TITLE);
+    fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
+    fillRow(inv, 5, Material.BLACK_STAINED_GLASS_PANE, " ");
+
+    int slot = 0;
+    for (CosmeticsManager.GoalTrailType trailType : CosmeticsManager.GoalTrailType.values()) {
+      if (slot >= 45) {
+        break;
+      }
+      inv.setItem(slot++, makeItem(trailType.icon, "&d" + trailType.fancyName, list("&7Click to equip"), false));
+    }
+
+    CosmeticsManager.GoalTrailType selected = this.cosmeticsManager.getGoalTrailType(player.getUniqueId());
+    inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
+    inv.setItem(49, makeItem(selected.icon, "&aCurrent: &f" + selected.fancyName,
+            list("&7Your selected goal trail."), true));
+    player.openInventory(inv);
+  }
+
+  public void openGoalCelebrationMenu(Player player) {
+    Inventory inv = Bukkit.createInventory(null, 54, GOAL_CELEBRATION_TITLE);
+    fill(inv, Material.GRAY_STAINED_GLASS_PANE, " ");
+    fillRow(inv, 5, Material.BLACK_STAINED_GLASS_PANE, " ");
+
+    int slot = 0;
+    for (CosmeticsManager.GoalCelebrationType celebrationType : CosmeticsManager.GoalCelebrationType.values()) {
+      if (slot >= 45) {
+        break;
+      }
+      inv.setItem(slot++, makeItem(celebrationType.icon, "&6" + celebrationType.fancyName, list("&7Click to equip"), false));
+    }
+
+    CosmeticsManager.GoalCelebrationType selected = this.cosmeticsManager.getGoalCelebrationType(player.getUniqueId());
+    inv.setItem(45, makeItem(Material.OAK_DOOR, "&cExit To Main Menu", list("&7Return to cosmetics menu"), false));
+    inv.setItem(49, makeItem(selected.icon, "&aCurrent: &f" + selected.fancyName,
+            list("&7Your selected goal celebration."), true));
+    player.openInventory(inv);
+  }
+
   @EventHandler
   public void onMenuClick(InventoryClickEvent event) {
     if (!(event.getWhoClicked() instanceof Player)) {
@@ -115,7 +161,8 @@ public class CosmeticsMenuListener implements Listener {
     Player player = (Player) event.getWhoClicked();
     String title = event.getView().getTitle();
     if (!MAIN_TITLE.equals(title) && !STICKS_TITLE.equals(title)
-            && !PARTICLE_TITLE.equals(title) && !GOALIE_PADS_TITLE.equals(title)) {
+            && !PARTICLE_TITLE.equals(title) && !GOALIE_PADS_TITLE.equals(title)
+            && !GOAL_TRAILS_TITLE.equals(title) && !GOAL_CELEBRATION_TITLE.equals(title)) {
       return;
     }
 
@@ -128,8 +175,12 @@ public class CosmeticsMenuListener implements Listener {
     if (MAIN_TITLE.equals(title)) {
       if (slot == 11) {
         openStickMenu(player);
-      } else if (slot == 13) {
+      } else if (slot == 12) {
         openGoaliePadMenu(player);
+      } else if (slot == 13) {
+        openGoalTrailMenu(player);
+      } else if (slot == 14) {
+        openGoalCelebrationMenu(player);
       } else if (slot == 15) {
         openParticleMenu(player);
       }
@@ -163,6 +214,36 @@ public class CosmeticsMenuListener implements Listener {
         player.sendMessage("§6[§bBH§6] §aSelected goalie pads: §f" + selected.fancyName);
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
         openGoaliePadMenu(player);
+      }
+      return;
+    }
+
+    if (GOAL_TRAILS_TITLE.equals(title)) {
+      if (slot == 45) {
+        openMainMenu(player);
+        return;
+      }
+      if (slot < CosmeticsManager.GoalTrailType.values().length && slot < 45) {
+        CosmeticsManager.GoalTrailType selected = CosmeticsManager.GoalTrailType.values()[slot];
+        this.cosmeticsManager.setGoalTrailType(player, selected);
+        player.sendMessage("§6[§bBH§6] §aSelected goal trail: §f" + selected.fancyName);
+        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+        openGoalTrailMenu(player);
+      }
+      return;
+    }
+
+    if (GOAL_CELEBRATION_TITLE.equals(title)) {
+      if (slot == 45) {
+        openMainMenu(player);
+        return;
+      }
+      if (slot < CosmeticsManager.GoalCelebrationType.values().length && slot < 45) {
+        CosmeticsManager.GoalCelebrationType selected = CosmeticsManager.GoalCelebrationType.values()[slot];
+        this.cosmeticsManager.setGoalCelebrationType(player, selected);
+        player.sendMessage("§6[§bBH§6] §aSelected goal celebration: §f" + selected.fancyName);
+        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+        openGoalCelebrationMenu(player);
       }
       return;
     }
@@ -240,6 +321,7 @@ public class CosmeticsMenuListener implements Listener {
       meta.addEnchant(org.bukkit.enchantments.Enchantment.KNOCKBACK, 1, true);
       meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
     }
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
     boots.setItemMeta(meta);
     return boots;
   }
