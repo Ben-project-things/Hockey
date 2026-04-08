@@ -38,6 +38,7 @@ import me.sammy.benhockey.cosmetics.CosmeticsManager;
  * The data involved with a rink.
  */
 public class Rink {
+  private static final String CAMERA_TAG = "benhockey_camera";
   private final String name;
   private final Set<Player> refs = new HashSet<>();
   private final Set<Player> fans = new HashSet<>();
@@ -98,7 +99,7 @@ public class Rink {
     this.state = GameState.PREGAME;
     this.scoreboard = new GameScoreboard(this);
     this.spectatorFocusPlayerId = null;
-    this.spectatorCamera = createRinkCamera();
+    this.spectatorCamera = findOrCreateRinkCamera();
   }
 
   /**
@@ -1271,10 +1272,45 @@ public class Rink {
   public ArmorStand ensureSpectatorCamera() {
     ArmorStand camera = this.spectatorCamera;
     if (camera == null || !camera.isValid()) {
-      this.spectatorCamera = createRinkCamera();
+      this.spectatorCamera = findOrCreateRinkCamera();
       camera = this.spectatorCamera;
     }
     return camera;
+  }
+
+  private ArmorStand findOrCreateRinkCamera() {
+    ArmorStand existingCamera = findExistingRinkCamera();
+    if (existingCamera != null) {
+      return existingCamera;
+    }
+    return createRinkCamera();
+  }
+
+  private ArmorStand findExistingRinkCamera() {
+    if (this.centerIce.getWorld() == null) {
+      return null;
+    }
+
+    ArmorStand firstMatch = null;
+    for (ArmorStand stand : this.centerIce.getWorld().getEntitiesByClass(ArmorStand.class)) {
+      if (!isRinkCamera(stand)) {
+        continue;
+      }
+
+      if (firstMatch == null) {
+        firstMatch = stand;
+        continue;
+      }
+
+      stand.remove();
+    }
+    return firstMatch;
+  }
+
+  private boolean isRinkCamera(ArmorStand stand) {
+    Set<String> tags = stand.getScoreboardTags();
+    return tags.contains(CAMERA_TAG) && tags.contains(this.name)
+            || tags.contains(this.name) && stand.isMarker() && stand.isInvisible();
   }
 
   public Location getFanSpawnLocation() {
@@ -1363,6 +1399,7 @@ public class Rink {
     armorStand.setInvulnerable(true);
     armorStand.setCollidable(false);
     armorStand.setPersistent(true);
+    armorStand.addScoreboardTag(CAMERA_TAG);
     armorStand.addScoreboardTag(this.name);
     return armorStand;
   }
