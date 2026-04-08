@@ -296,8 +296,9 @@ public class CosmeticsMenuListener implements Listener {
       meta.addEnchant(org.bukkit.enchantments.Enchantment.KNOCKBACK, 1, true);
       meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
     }
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
     if (material.name().endsWith("_AXE") || material.name().endsWith("_HOE")) {
-      meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE);
+      meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
     }
     item.setItemMeta(meta);
     return item;

@@ -187,16 +187,10 @@ public class PlayerHockeyListener implements Listener {
       charges.remove(p.getUniqueId());
     }
 
-    if (lobbyManager.isPlayerAKeeper(p)) {
-      if (e.isSneaking()) {
-        // Intentionally disabled to prevent repeated armor stand spawning.
-      } else {
-        removeGoalCelebrationMountForPlayer(p);
-      }
+    if (lobbyManager.isPlayerAKeeper(p) && e.isSneaking()) {
+      // Intentionally disabled to prevent repeated armor stand spawning.
     }
-    if (!e.isSneaking()) {
-      removeGoalCelebrationMountForPlayer(p);
-    }
+    removeGoalCelebrationMountForPlayer(p);
   }
 
   @EventHandler
@@ -1066,6 +1060,7 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
     direction.normalize().multiply(0.55);
+    direction.setY(-0.08);
     mount.setVelocity(direction);
   }
 
@@ -1566,14 +1561,17 @@ public class PlayerHockeyListener implements Listener {
       bounced.setY(Math.max(0.04, velocity.getY() * 0.95));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = yawRedirect.clone().multiply(0.66).setY(0);
-      Location pushOut = puckLoc.clone().add(pushDirection);
-      if (isPassableForPuck(pushOut)) {
-        slime.teleport(pushOut);
-      } else {
-        Location elevatedPushOut = pushOut.clone().add(0, 0.15, 0);
-        if (isPassableForPuck(elevatedPushOut)) {
-          slime.teleport(elevatedPushOut);
+      Vector pushDirection = yawRedirect.clone().multiply(0.09).setY(0);
+      Location current = slime.getLocation();
+      if (!isPassableForPuck(current)) {
+        Location pushOut = current.clone().add(pushDirection);
+        if (isPassableForPuck(pushOut)) {
+          slime.teleport(pushOut);
+        } else {
+          Location elevatedPushOut = pushOut.clone().add(0, 0.15, 0);
+          if (isPassableForPuck(elevatedPushOut)) {
+            slime.teleport(elevatedPushOut);
+          }
         }
       }
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
