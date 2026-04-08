@@ -165,7 +165,6 @@ public class PlayerHockeyListener implements Listener {
     if (!this.lobbyManager.isPlayerAKeeper(player) || !player.isSneaking()) {
       return;
     }
-    // Goalie pad armor stand visuals are disabled to prevent runaway spawning.
   }
 
   @EventHandler
@@ -188,7 +187,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     if (lobbyManager.isPlayerAKeeper(p) && e.isSneaking()) {
-      // Intentionally disabled to prevent repeated armor stand spawning.
+
     }
     removeGoalCelebrationMountForPlayer(p);
   }
@@ -1561,19 +1560,6 @@ public class PlayerHockeyListener implements Listener {
       bounced.setY(Math.max(0.04, velocity.getY() * 0.95));
       slime.setVelocity(bounced);
 
-      Vector pushDirection = yawRedirect.clone().multiply(0.09).setY(0);
-      Location current = slime.getLocation();
-      if (!isPassableForPuck(current)) {
-        Location pushOut = current.clone().add(pushDirection);
-        if (isPassableForPuck(pushOut)) {
-          slime.teleport(pushOut);
-        } else {
-          Location elevatedPushOut = pushOut.clone().add(0, 0.15, 0);
-          if (isPassableForPuck(elevatedPushOut)) {
-            slime.teleport(elevatedPushOut);
-          }
-        }
-      }
       slime.getWorld().playSound(puckLoc, Sound.BLOCK_NETHERITE_BLOCK_HIT, 35f, 1.1f);
       maybeCreditGoalieSave(player, slime, velocity);
 
@@ -1581,12 +1567,6 @@ public class PlayerHockeyListener implements Listener {
       this.recentGoalieBouncePlayer.put(slimeId, player.getUniqueId());
       break;
     }
-  }
-
-  private boolean isPassableForPuck(Location location) {
-    Block feet = location.getBlock();
-    Block above = location.clone().add(0, 1, 0).getBlock();
-    return feet.isPassable() && above.isPassable();
   }
 
   private void registerShotOnTargetIfNeeded(Player shooter, Slime slime) {
