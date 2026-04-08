@@ -85,6 +85,7 @@ public class PlayerHockeyListener implements Listener {
   private static final double GOALIE_BOUNCE_STRENGTH_MULTIPLIER = 0.82;
   private static final double GOALIE_BOUNCE_VERTICAL_MULTIPLIER = 0.90;
   private static final String SPECTATOR_CAMERA_TAG_PREFIX = "bh_spectator_cam_";
+  private static final long SPECTATOR_CAMERA_RESPAWN_COOLDOWN_MS = 2000L;
 
   private final LobbyManager lobbyManager;
   private final HashMap<UUID, Double> charges = new HashMap<>();
@@ -101,6 +102,7 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, List<ArmorStand>> goaliePadStands = new HashMap<>();
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
+  private final Map<String, Long> spectatorCameraRespawnCooldown = new HashMap<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
@@ -1098,7 +1100,7 @@ public class PlayerHockeyListener implements Listener {
     Vector mountVelocity = horizontalDirection.clone().multiply(GOAL_CELEBRATION_SPEED);
     mountVelocity.setY(GOAL_CELEBRATION_DOWNWARD_VELOCITY);
     mount.setVelocity(mountVelocity);
-    mount.setRotation(0.0f, look.getYaw());
+    mount.setRotation(look.getYaw(), look.getPitch());
   }
 
   private void clearGoalCelebrationMount(String rinkKey) {
@@ -1143,6 +1145,7 @@ public class PlayerHockeyListener implements Listener {
     Location focusTarget = getSpectatorFocusLocation(rink);
     setYawPitchToward(cameraBase, focusTarget);
     camera.teleport(cameraBase);
+    attachFansToSpectatorCamera(rink, camera);
   }
 
   private ArmorStand ensureSpectatorCamera(Rink rink) {
@@ -1170,9 +1173,23 @@ public class PlayerHockeyListener implements Listener {
       return keep;
     }
 
+    ArmorStand legacyCamera = findLegacySpectatorCameraNearby(spawn);
+    if (legacyCamera != null && legacyCamera.isValid()) {
+      configureSpectatorCameraStand(legacyCamera, key);
+      rink.setSpectatorCamera(legacyCamera);
+      return legacyCamera;
+    }
+
+    long now = nowMillis();
+    Long cooldownUntil = this.spectatorCameraRespawnCooldown.get(key);
+    if (cooldownUntil != null && now < cooldownUntil) {
+      return null;
+    }
+
     ArmorStand stand = spawn.getWorld().spawn(spawn, ArmorStand.class, armorStand -> {
       configureSpectatorCameraStand(armorStand, key);
     });
+    this.spectatorCameraRespawnCooldown.put(key, now + SPECTATOR_CAMERA_RESPAWN_COOLDOWN_MS);
     rink.setSpectatorCamera(stand);
     return stand;
   }
@@ -1207,6 +1224,52 @@ public class PlayerHockeyListener implements Listener {
             b.getLocation().distanceSquared(baseLocation)
     ));
     return found;
+  }
+
+  private ArmorStand findLegacySpectatorCameraNearby(Location baseLocation) {
+    World world = baseLocation.getWorld();
+    if (world == null) {
+      return null;
+    }
+
+    ArmorStand closest = null;
+    double closestDistance = Double.MAX_VALUE;
+    for (Entity entity : world.getNearbyEntities(baseLocation, 2.5, 2.5, 2.5)) {
+      if (!(entity instanceof ArmorStand)) {
+        continue;
+      }
+      ArmorStand stand = (ArmorStand) entity;
+      if (!stand.isInvisible() || !stand.isMarker() || stand.hasGravity()) {
+        continue;
+      }
+
+      double distance = stand.getLocation().distanceSquared(baseLocation);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closest = stand;
+      }
+    }
+
+    return closest;
+  }
+
+  private void attachFansToSpectatorCamera(Rink rink, ArmorStand camera) {
+    for (Player player : Bukkit.getOnlinePlayers()) {
+      if (!player.isOnline() || player.getGameMode() != GameMode.SPECTATOR) {
+        continue;
+      }
+      if (!rink.equals(this.lobbyManager.getPlayerRink(player))) {
+        continue;
+      }
+      if (!"none".equalsIgnoreCase(rink.getTeam(player))) {
+        continue;
+      }
+
+      Entity spectatorTarget = player.getSpectatorTarget();
+      if (spectatorTarget == null || !spectatorTarget.isValid() || !spectatorTarget.getUniqueId().equals(camera.getUniqueId())) {
+        player.setSpectatorTarget(camera);
+      }
+    }
   }
 
   private void configureSpectatorCameraStand(ArmorStand armorStand, String rinkKey) {
