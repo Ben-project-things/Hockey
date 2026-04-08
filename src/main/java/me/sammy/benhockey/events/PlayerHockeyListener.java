@@ -42,6 +42,7 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
+import org.bukkit.util.EulerAngle;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 
@@ -170,6 +171,12 @@ public class PlayerHockeyListener implements Listener {
     if (!this.lobbyManager.isPlayerAKeeper(player) || !player.isSneaking()) {
       return;
     }
+
+    e.getTo();
+    if (e.getFrom().distanceSquared(e.getTo()) < 0.0004) {
+      return;
+    }
+    ensureAndPositionGoaliePads(player);
   }
 
   @EventHandler
@@ -186,8 +193,12 @@ public class PlayerHockeyListener implements Listener {
       charges.remove(p.getUniqueId());
     }
 
-    if (lobbyManager.isPlayerAKeeper(p) && e.isSneaking()) {
-
+    if (lobbyManager.isPlayerAKeeper(p)) {
+      if (e.isSneaking()) {
+        ensureAndPositionGoaliePads(p);
+      } else {
+        clearGoaliePads(p.getUniqueId());
+      }
     }
   }
 
@@ -945,7 +956,7 @@ public class PlayerHockeyListener implements Listener {
     }
 
     enforceGoalieHalfLineRule();
-
+    updateGoaliePads();
     updateGoalCelebrationsAndTrails();
     updateSpectatorCameras();
   }
@@ -1717,6 +1728,99 @@ public class PlayerHockeyListener implements Listener {
 
     this.recentShotOnTargetCreditMillis.put(slimeId, now);
     rink.addShotOnTarget(shooter);
+  }
+
+  private void updateGoaliePads() {
+    Set<UUID> activePadGoalies = new HashSet<>();
+    for (Player online : Bukkit.getOnlinePlayers()) {
+      if (!this.lobbyManager.isPlayerAKeeper(online) || !online.isSneaking()) {
+        continue;
+      }
+
+      Rink rink = this.lobbyManager.getPlayerRink(online);
+      if (rink == null) {
+        continue;
+      }
+
+      activePadGoalies.add(online.getUniqueId());
+      ensureAndPositionGoaliePads(online);
+    }
+
+    for (UUID goalieId : new HashSet<>(this.goaliePadStands.keySet())) {
+      if (!activePadGoalies.contains(goalieId)) {
+        clearGoaliePads(goalieId);
+      }
+    }
+  }
+
+  private void ensureAndPositionGoaliePads(Player goalie) {
+    List<ArmorStand> pads = this.goaliePadStands.get(goalie.getUniqueId());
+    if (pads == null) {
+      pads = new ArrayList<>();
+      pads.add(spawnGoaliePad(goalie.getLocation()));
+      pads.add(spawnGoaliePad(goalie.getLocation()));
+      this.goaliePadStands.put(goalie.getUniqueId(), pads);
+    }
+    if (pads.size() != 2) {
+      clearGoaliePads(goalie.getUniqueId());
+      pads = new ArrayList<>();
+      pads.add(spawnGoaliePad(goalie.getLocation()));
+      pads.add(spawnGoaliePad(goalie.getLocation()));
+      this.goaliePadStands.put(goalie.getUniqueId(), pads);
+    }
+
+    Vector forward = goalie.getLocation().getDirection().setY(0);
+    if (forward.lengthSquared() < 0.0001) {
+      forward = new Vector(0, 0, 1);
+    }
+    forward.normalize();
+    Vector left = new Vector(-forward.getZ(), 0, forward.getX()).normalize();
+    Vector goalieVelocity = goalie.getVelocity().clone().setY(0);
+    if (goalieVelocity.lengthSquared() > 0.0001) {
+      goalieVelocity.multiply(0.8);
+    }
+
+    Location base = goalie.getLocation().clone()
+            .add(forward.clone().multiply(0.52))
+            .add(goalieVelocity);
+    float padYaw = goalie.getLocation().getYaw();
+
+    Location leftPad = base.clone().add(left.clone().multiply(0.22));
+    Location rightPad = base.clone().subtract(left.clone().multiply(0.22));
+    leftPad.setYaw(padYaw + 16f);
+    rightPad.setYaw(padYaw - 16f);
+    leftPad.setPitch(0f);
+    rightPad.setPitch(0f);
+    pads.get(0).teleport(leftPad);
+    pads.get(1).teleport(rightPad);
+    ItemStack padBoots = getCosmeticsManager().createGoaliePadBoots(goalie.getUniqueId());
+    for (ArmorStand pad : pads) {
+      pad.getEquipment().setBoots(padBoots.clone());
+    }
+    for (ArmorStand pad : pads) {
+      pad.setHeadPose(new EulerAngle(0, 0, 0));
+      pad.setBodyPose(new EulerAngle(0, 0, 0));
+      pad.setRightArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
+      pad.setLeftArmPose(new EulerAngle(Math.toRadians(-90), 0, 0));
+    }
+  }
+
+  private ArmorStand spawnGoaliePad(Location location) {
+    ArmorStand stand = location.getWorld().spawn(location, ArmorStand.class, armorStand -> {
+      armorStand.setInvisible(true);
+      armorStand.setGravity(false);
+      armorStand.setMarker(true);
+      armorStand.setSmall(false);
+      armorStand.setBasePlate(false);
+      armorStand.setArms(true);
+      armorStand.setSilent(true);
+      armorStand.setInvulnerable(true);
+      armorStand.setCollidable(false);
+      armorStand.getEquipment().setBoots(new ItemStack(Material.IRON_BOOTS));
+      armorStand.getEquipment().setItemInMainHand(null);
+      armorStand.getEquipment().setItemInOffHand(null);
+    });
+    return stand;
   }
 
   private void clearGoaliePads(UUID goalieId) {
