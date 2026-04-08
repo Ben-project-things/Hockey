@@ -46,6 +46,15 @@ commands:
   penalty:
     description: Stops the game
     usage: /penalty <give/edit/end> [playerName] <reason> <time>
+  startfight:
+    description: Start a player fight while game is paused
+    usage: /startfight <player1> <player2> OR /startfight brawl
+  acceptfight:
+    description: Accept a fight request
+  declinefight:
+    description: Decline a fight request
+  endfight:
+    description: End an active fight
   createrink:
     description: Starts the setup of a rink
   setgoal:

@@ -104,6 +104,21 @@ public class MyTabCompleter implements TabCompleter {
       }
     }
 
+    if (command.getName().equalsIgnoreCase("startfight")) {
+      if (args.length == 1) {
+        List<String> options = new java.util.ArrayList<>(Arrays.asList("brawl"));
+        options.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).collect(Collectors.toList()));
+        return options.stream()
+                .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
+                .collect(Collectors.toList());
+      } else if (args.length == 2) {
+        return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
+                .collect(Collectors.toList());
+      }
+    }
+
     return Collections.emptyList();
   }
 }

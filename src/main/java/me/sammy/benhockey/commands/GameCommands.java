@@ -5,8 +5,16 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import me.sammy.benhockey.BenHockey;
 import java.util.stream.Collectors;
@@ -22,6 +30,8 @@ import me.sammy.benhockey.lobby.LobbyManager;
 public class GameCommands implements CommandExecutor {
 
   private final LobbyManager lobbyManager;
+  private final Map<UUID, FightInvite> pendingFightInvites = new HashMap<>();
+  private final Set<UUID> acceptedFightInvites = new HashSet<>();
 
   public GameCommands(LobbyManager lobbyManager) {
     this.lobbyManager = lobbyManager;
@@ -367,6 +377,119 @@ public class GameCommands implements CommandExecutor {
           }
           return true;
 
+        case "startfight":
+          if (lobbyManager.isPlayerInLobby(player)) {
+            player.sendMessage("§6[§bBH§6] §cYou need to be in a rink to start a fight.");
+            return true;
+          }
+          if (!player.isOp() && !"ref".equalsIgnoreCase(lobbyManager.getPlayerRink(player).getTeam(player))) {
+            player.sendMessage("§6[§bBH§6] §cYou do not have permission.");
+            return true;
+          }
+          Rink fightRink = lobbyManager.getPlayerRink(player);
+          if (fightRink.getGameState() != GameState.GAME || fightRink.getGame() == null) {
+            player.sendMessage("§6[§bBH§6] §cA game must be going to start a fight.");
+            return true;
+          }
+          if (!fightRink.getGame().isPaused()) {
+            player.sendMessage("§6[§bBH§6] §cThe game must be paused for a fight to start.");
+            return true;
+          }
+          if (args.length != 1 && args.length != 2) {
+            player.sendMessage("§6[§bBH§6] §aUsage: §7/startfight <player1> <player2> or /startfight brawl");
+            return true;
+          }
+          if (args.length == 1 && "brawl".equalsIgnoreCase(args[0])) {
+            Set<Player> fighters = new HashSet<>();
+            fighters.addAll(fightRink.getHomeTeamPlayers());
+            fighters.addAll(fightRink.getAwayTeamPlayers());
+            fightRink.startFight(new java.util.ArrayList<>(fighters), true);
+            for (Player rinkPlayer : fightRink.getAllPlayers()) {
+              rinkPlayer.sendMessage("§6[§bBH§6] §cA team brawl has started!");
+            }
+            return true;
+          }
+          if (args.length != 2) {
+            player.sendMessage("§6[§bBH§6] §aUsage: §7/startfight <player1> <player2> or /startfight brawl");
+            return true;
+          }
+          Player fighterOne = Bukkit.getPlayer(args[0]);
+          Player fighterTwo = Bukkit.getPlayer(args[1]);
+          if (fighterOne == null || fighterTwo == null) {
+            player.sendMessage("§6[§bBH§6] §cBoth players must be online.");
+            return true;
+          }
+          if (!fightRink.containsPlayer(fighterOne) || !fightRink.containsPlayer(fighterTwo)) {
+            player.sendMessage("§6[§bBH§6] §cBoth players must be in your rink.");
+            return true;
+          }
+          createFightInvite(fightRink, fighterOne, fighterTwo, player);
+          return true;
+
+        case "acceptfight":
+          if (lobbyManager.isPlayerInLobby(player)) {
+            return true;
+          }
+          FightInvite acceptInvite = pendingFightInvites.get(player.getUniqueId());
+          if (acceptInvite == null) {
+            player.sendMessage("§6[§bBH§6] §cYou don't have a pending fight invite.");
+            return true;
+          }
+          this.acceptedFightInvites.add(player.getUniqueId());
+          player.sendMessage("§6[§bBH§6] §aYou accepted the fight challenge.");
+          Player opponent = Bukkit.getPlayer(acceptInvite.getOpponentId(player.getUniqueId()));
+          if (opponent != null) {
+            opponent.sendMessage("§6[§bBH§6] §e" + player.getName() + " has accepted the fight.");
+          }
+          if (acceptedFightInvites.contains(acceptInvite.playerOneId) && acceptedFightInvites.contains(acceptInvite.playerTwoId)) {
+            Rink inviteRink = acceptInvite.rink;
+            inviteRink.startFight(java.util.Arrays.asList(
+                    Bukkit.getPlayer(acceptInvite.playerOneId),
+                    Bukkit.getPlayer(acceptInvite.playerTwoId)
+            ), false);
+            for (Player rinkPlayer : inviteRink.getAllPlayers()) {
+              rinkPlayer.sendMessage("§6[§bBH§6] §cFight started: §f" + acceptInvite.playerOneName
+                      + " §7vs §f" + acceptInvite.playerTwoName);
+            }
+            pendingFightInvites.remove(acceptInvite.playerOneId);
+            pendingFightInvites.remove(acceptInvite.playerTwoId);
+            acceptedFightInvites.remove(acceptInvite.playerOneId);
+            acceptedFightInvites.remove(acceptInvite.playerTwoId);
+          }
+          return true;
+
+        case "declinefight":
+          FightInvite declineInvite = pendingFightInvites.remove(player.getUniqueId());
+          if (declineInvite == null) {
+            player.sendMessage("§6[§bBH§6] §cYou don't have a pending fight invite.");
+            return true;
+          }
+          pendingFightInvites.remove(declineInvite.getOpponentId(player.getUniqueId()));
+          acceptedFightInvites.remove(declineInvite.playerOneId);
+          acceptedFightInvites.remove(declineInvite.playerTwoId);
+          UUID otherId = declineInvite.getOpponentId(player.getUniqueId());
+          Player otherPlayer = Bukkit.getPlayer(otherId);
+          if (otherPlayer != null) {
+            otherPlayer.sendMessage("§6[§bBH§6] §c" + player.getName() + " has declined to fight.");
+          }
+          player.sendMessage("§6[§bBH§6] §cYou have declined to fight "
+                  + declineInvite.getOpponentName(player.getUniqueId()) + ".");
+          return true;
+
+        case "endfight":
+          if (lobbyManager.isPlayerInLobby(player)) {
+            player.sendMessage("§6[§bBH§6] §cYou need to be in a rink to end a fight.");
+            return true;
+          }
+          if (!player.isOp() && !"ref".equalsIgnoreCase(lobbyManager.getPlayerRink(player).getTeam(player))) {
+            player.sendMessage("§6[§bBH§6] §cYou do not have permission.");
+            return true;
+          }
+          Rink endFightRink = lobbyManager.getPlayerRink(player);
+          endFightRink.endFight();
+          player.sendMessage("§6[§bBH§6] §aFight ended.");
+          return true;
+
         case "createrink":
           if (player.isOp()) {
             if (args.length != 1) {
@@ -461,11 +584,65 @@ public class GameCommands implements CommandExecutor {
       player.sendMessage("§a/whistle §7- Stops the game.");
       player.sendMessage("§a/penalty <give/edit/end> <player> <reason> <time> §7- Gives, edits, " +
                       "or ends a penalty to the given player.");
+      player.sendMessage("§a/startfight <p1> <p2>/brawl §7- Starts a fight while game is paused.");
+      player.sendMessage("§a/endfight §7- Ends the current fight.");
       player.sendMessage("§a/createrink <rinkname> §7- Create a new rink.");
       player.sendMessage("§a/setgoal <red/blue/penalty> §7- Sets the specified location for " +
               "§7the rink.");
       player.sendMessage("§a/cancelrink §7- Cancel rink setup.");
       player.sendMessage("§a/deleterink <rinkname> §7- Delete a rink.");
+    }
+  }
+
+  private void createFightInvite(Rink rink, Player fighterOne, Player fighterTwo, Player ref) {
+    FightInvite invite = new FightInvite(rink, fighterOne, fighterTwo);
+    this.pendingFightInvites.put(fighterOne.getUniqueId(), invite);
+    this.pendingFightInvites.put(fighterTwo.getUniqueId(), invite);
+    this.acceptedFightInvites.remove(fighterOne.getUniqueId());
+    this.acceptedFightInvites.remove(fighterTwo.getUniqueId());
+
+    sendFightPrompt(fighterOne, fighterTwo.getName());
+    sendFightPrompt(fighterTwo, fighterOne.getName());
+    ref.sendMessage("§6[§bBH§6] §aFight invite sent to " + fighterOne.getName() + " and " + fighterTwo.getName() + ".");
+  }
+
+  private void sendFightPrompt(Player player, String opponentName) {
+    TextComponent prefix = new TextComponent("§6[§bBH§6] §eFight request vs §f" + opponentName + "§e: ");
+    TextComponent accept = new TextComponent("§a[ACCEPT]");
+    accept.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+            new ComponentBuilder("Click to accept the fight.").create()));
+    accept.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/acceptfight"));
+
+    TextComponent spacer = new TextComponent(" ");
+    TextComponent decline = new TextComponent("§c[DECLINE]");
+    decline.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+            new ComponentBuilder("Click to decline the fight.").create()));
+    decline.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/declinefight"));
+
+    player.spigot().sendMessage(prefix, accept, spacer, decline);
+  }
+
+  private static class FightInvite {
+    private final Rink rink;
+    private final UUID playerOneId;
+    private final UUID playerTwoId;
+    private final String playerOneName;
+    private final String playerTwoName;
+
+    private FightInvite(Rink rink, Player playerOne, Player playerTwo) {
+      this.rink = rink;
+      this.playerOneId = playerOne.getUniqueId();
+      this.playerTwoId = playerTwo.getUniqueId();
+      this.playerOneName = playerOne.getName();
+      this.playerTwoName = playerTwo.getName();
+    }
+
+    private UUID getOpponentId(UUID playerId) {
+      return playerOneId.equals(playerId) ? playerTwoId : playerOneId;
+    }
+
+    private String getOpponentName(UUID playerId) {
+      return playerOneId.equals(playerId) ? playerTwoName : playerOneName;
     }
   }
 }

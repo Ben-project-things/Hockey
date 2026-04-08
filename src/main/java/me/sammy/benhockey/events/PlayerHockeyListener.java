@@ -15,6 +15,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
 import org.bukkit.event.EventHandler;
@@ -22,6 +23,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.spigotmc.event.entity.EntityDismountEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -30,6 +33,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
@@ -105,6 +109,8 @@ public class PlayerHockeyListener implements Listener {
   private final Map<UUID, Long> suppressGroundBounceUntilMillis = new HashMap<>();
   private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
   private final Map<UUID, UUID> goalieOwnHitNoGlovePlayer = new HashMap<>();
+  private final Set<UUID> temporaryFightBloodItems = new HashSet<>();
+  private final Map<UUID, Location> pendingFightRespawn = new HashMap<>();
   private int goalTrailTick = 0;
 
   private static final String GLOVED_PUCK_NAME = "§bGloved Puck";
@@ -1616,6 +1622,12 @@ public class PlayerHockeyListener implements Listener {
       return;
     }
 
+    if (damagedRink.areBothPlayersFighting(damager, damaged)) {
+      damagedRink.registerFightHit(damager);
+      spawnFightBlood(damaged.getLocation().clone().add(0, 1.0, 0), e.getDamage());
+      return;
+    }
+
     String damagedTeam = damagedRink.getTeam(damaged);
     String damagerTeam = damagerRink.getTeam(damager);
 
@@ -1651,6 +1663,108 @@ public class PlayerHockeyListener implements Listener {
     e.setDamage(0.0);
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
     damager.sendMessage("§6[§bBH§6] §aYou hit §f" + damaged.getName() + " §7-> Power " + hitLevel);
+  }
+
+  @EventHandler
+  public void onFightDeath(PlayerDeathEvent e) {
+    Player knockedOut = e.getEntity();
+    Rink rink = this.lobbyManager.getPlayerRink(knockedOut);
+    if (rink == null || !rink.isPlayerFighting(knockedOut)) {
+      return;
+    }
+
+    e.setDeathMessage(null);
+    Player killer = knockedOut.getKiller();
+    if (killer != null && rink.isPlayerFighting(killer)) {
+      for (Player p : rink.getAllPlayers()) {
+        p.sendMessage("§6[§bBH§6] §c" + killer.getName() + " has knocked out " + knockedOut.getName() + ".");
+      }
+    }
+
+    sendFightStats(rink, knockedOut, killer);
+    pendingFightRespawn.put(knockedOut.getUniqueId(), getBenchLocationFor(knockedOut, rink));
+
+    if (!rink.isBrawlFightActive()) {
+      rink.endFight();
+    } else {
+      rink.removeFighter(knockedOut.getUniqueId());
+    }
+  }
+
+  @EventHandler
+  public void onFightRespawn(PlayerRespawnEvent e) {
+    UUID playerId = e.getPlayer().getUniqueId();
+    if (!this.pendingFightRespawn.containsKey(playerId)) {
+      return;
+    }
+    e.setRespawnLocation(this.pendingFightRespawn.remove(playerId));
+  }
+
+  @EventHandler
+  public void onFightBloodPickup(EntityPickupItemEvent e) {
+    if (!(e.getEntity() instanceof Player)) {
+      return;
+    }
+    if (this.temporaryFightBloodItems.contains(e.getItem().getUniqueId())) {
+      e.setCancelled(true);
+    }
+  }
+
+  private void spawnFightBlood(Location hitLocation, double damageAmount) {
+    if (hitLocation.getWorld() == null) {
+      return;
+    }
+    int drops = Math.max(1, (int) Math.ceil(Math.max(0.1, damageAmount)));
+    for (int i = 0; i < drops; i++) {
+      ItemStack blood = new ItemStack(Material.RED_DYE, 1);
+      ItemMeta bloodMeta = blood.getItemMeta();
+      bloodMeta.setDisplayName("§cFight Blood #" + UUID.randomUUID().toString().substring(0, 6));
+      blood.setItemMeta(bloodMeta);
+      Item dropped = hitLocation.getWorld().dropItemNaturally(hitLocation, blood);
+      this.temporaryFightBloodItems.add(dropped.getUniqueId());
+      dropped.setPickupDelay(Integer.MAX_VALUE);
+      double randomX = (Math.random() - 0.5) * 0.32;
+      double randomY = 0.08 + (Math.random() * 0.14);
+      double randomZ = (Math.random() - 0.5) * 0.32;
+      dropped.setVelocity(new Vector(randomX, randomY, randomZ));
+      Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+        this.temporaryFightBloodItems.remove(dropped.getUniqueId());
+        if (dropped.isValid()) {
+          dropped.remove();
+        }
+      }, 20L);
+    }
+  }
+
+  private void sendFightStats(Rink rink, Player knockedOut, Player killer) {
+    UUID opponentId = rink.getFightOpponent(knockedOut.getUniqueId());
+    Player opponent = opponentId == null ? killer : Bukkit.getPlayer(opponentId);
+    if (opponent == null) {
+      return;
+    }
+    double knockedOutStartHealth = rink.getFightStartingHealth(knockedOut.getUniqueId());
+    double opponentStartHealth = rink.getFightStartingHealth(opponent.getUniqueId());
+    String knockedOutHealth = String.format("%.1f", Math.max(0.0, knockedOut.getHealth())) + "/" + String.format("%.1f", knockedOutStartHealth);
+    String opponentHealth = String.format("%.1f", Math.max(0.0, opponent.getHealth())) + "/" + String.format("%.1f", opponentStartHealth);
+
+    String firstLine = "§6[§bBH§6] §eFight Stats §8- §f" + opponent.getName() + " vs " + knockedOut.getName();
+    String secondLine = "§7" + opponent.getName() + ": §fHits " + rink.getFightHits(opponent)
+            + " §8| §fHealth " + opponentHealth;
+    String thirdLine = "§7" + knockedOut.getName() + ": §fHits " + rink.getFightHits(knockedOut)
+            + " §8| §fHealth " + knockedOutHealth;
+    for (Player player : rink.getAllPlayers()) {
+      player.sendMessage(firstLine);
+      player.sendMessage(secondLine);
+      player.sendMessage(thirdLine);
+    }
+  }
+
+  private Location getBenchLocationFor(Player player, Rink rink) {
+    String team = rink.getTeam(player);
+    if ("away".equalsIgnoreCase(team)) {
+      return rink.getAwayBench();
+    }
+    return rink.getHomeBench();
   }
 
   private boolean canGoalieGlovePuck(Player goalie, Slime puck, long now) {

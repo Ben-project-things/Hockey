@@ -24,6 +24,7 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -51,7 +52,13 @@ public class Rink {
   private final Set<UUID> glovedGoalies = new HashSet<>();
   private final Set<UUID> dangleModePlayers = new HashSet<>();
   private final Map<UUID, Long> recentShotOnTargetCreditMillis = new HashMap<>();
-  private Set<Player> fightingPlayers;
+  private final Set<UUID> fightingPlayers = new HashSet<>();
+  private final Map<UUID, ItemStack> storedFightHelmets = new HashMap<>();
+  private final Set<UUID> playersWithoutFightStick = new HashSet<>();
+  private final Map<UUID, Integer> fightHitTotals = new HashMap<>();
+  private final Map<UUID, Double> fightHealthAtStart = new HashMap<>();
+  private final Map<UUID, UUID> activeFightOpponents = new HashMap<>();
+  private boolean brawlFightActive = false;
   private boolean allowHits = false;
   private boolean teamLocked = false;
   private Game game;
@@ -373,6 +380,12 @@ public class Rink {
     this.glovedGoalies.remove(p.getUniqueId());
     this.dangleModePlayers.remove(p.getUniqueId());
     this.removePersonalPuck(p);
+    this.fightingPlayers.remove(p.getUniqueId());
+    this.storedFightHelmets.remove(p.getUniqueId());
+    this.playersWithoutFightStick.remove(p.getUniqueId());
+    this.fightHitTotals.remove(p.getUniqueId());
+    this.fightHealthAtStart.remove(p.getUniqueId());
+    this.activeFightOpponents.remove(p.getUniqueId());
     this.scoreboard.hideFromPlayer(p);
   }
 
@@ -763,6 +776,7 @@ public class Rink {
    */
   public void setToPregame() {
     this.state = GameState.PREGAME;
+    this.endFight();
     if (this.game != null) {
       this.game = null;
     }
@@ -774,6 +788,140 @@ public class Rink {
    */
   public void setToEndGame() {
     this.state = GameState.END_GAME;
+    this.endFight();
+  }
+
+  public boolean canStartFight(Player ref) {
+    return this.state == GameState.GAME
+            && this.game != null
+            && this.game.isPaused()
+            && ("ref".equalsIgnoreCase(this.getTeam(ref)) || ref.isOp());
+  }
+
+  public void startFight(List<Player> fighters, boolean brawlFight) {
+    this.endFight();
+    this.brawlFightActive = brawlFight;
+    for (Player player : fighters) {
+      if (player == null || !player.isOnline() || !this.containsPlayer(player)) {
+        continue;
+      }
+      if (!"home".equalsIgnoreCase(this.getTeam(player)) && !"away".equalsIgnoreCase(this.getTeam(player))) {
+        continue;
+      }
+      UUID playerId = player.getUniqueId();
+      this.fightingPlayers.add(playerId);
+      this.fightHitTotals.put(playerId, 0);
+      this.fightHealthAtStart.put(playerId, player.getHealth());
+      this.storedFightHelmets.put(playerId, player.getInventory().getHelmet());
+      player.getInventory().setHelmet(null);
+      stripStick(player);
+    }
+
+    if (!brawlFight && fighters.size() == 2) {
+      UUID first = fighters.get(0).getUniqueId();
+      UUID second = fighters.get(1).getUniqueId();
+      this.activeFightOpponents.put(first, second);
+      this.activeFightOpponents.put(second, first);
+    }
+  }
+
+  public boolean isFightActive() {
+    return !this.fightingPlayers.isEmpty();
+  }
+
+  public boolean isBrawlFightActive() {
+    return this.brawlFightActive;
+  }
+
+  public boolean isPlayerFighting(Player player) {
+    return this.fightingPlayers.contains(player.getUniqueId());
+  }
+
+  public boolean areBothPlayersFighting(Player first, Player second) {
+    return isPlayerFighting(first) && isPlayerFighting(second);
+  }
+
+  public void registerFightHit(Player attacker) {
+    UUID attackerId = attacker.getUniqueId();
+    this.fightHitTotals.put(attackerId, this.fightHitTotals.getOrDefault(attackerId, 0) + 1);
+  }
+
+  public int getFightHits(Player fighter) {
+    return this.fightHitTotals.getOrDefault(fighter.getUniqueId(), 0);
+  }
+
+  public UUID getFightOpponent(UUID playerId) {
+    return this.activeFightOpponents.get(playerId);
+  }
+
+  public double getFightStartingHealth(UUID playerId) {
+    return this.fightHealthAtStart.getOrDefault(playerId, 20.0);
+  }
+
+  public Set<UUID> getFightingPlayers() {
+    return Collections.unmodifiableSet(this.fightingPlayers);
+  }
+
+  public void endFight() {
+    for (UUID playerId : new HashSet<>(this.fightingPlayers)) {
+      Player player = Bukkit.getPlayer(playerId);
+      if (player == null || !player.isOnline()) {
+        continue;
+      }
+
+      ItemStack helmet = this.storedFightHelmets.get(playerId);
+      player.getInventory().setHelmet(helmet);
+      if (this.playersWithoutFightStick.contains(playerId)) {
+        if (this.isKeeper(player)) {
+          player.getInventory().addItem(createGoalieStick(player));
+        } else {
+          player.getInventory().addItem(createHockeyStick(player));
+        }
+      }
+      player.setHealth(player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getDefaultValue());
+      player.setFoodLevel(20);
+      player.setSaturation(20f);
+    }
+
+    this.fightingPlayers.clear();
+    this.storedFightHelmets.clear();
+    this.playersWithoutFightStick.clear();
+    this.fightHitTotals.clear();
+    this.fightHealthAtStart.clear();
+    this.activeFightOpponents.clear();
+    this.brawlFightActive = false;
+  }
+
+  public void removeFighter(UUID playerId) {
+    this.fightingPlayers.remove(playerId);
+    this.storedFightHelmets.remove(playerId);
+    this.playersWithoutFightStick.remove(playerId);
+    this.fightHitTotals.remove(playerId);
+    this.fightHealthAtStart.remove(playerId);
+    this.activeFightOpponents.remove(playerId);
+  }
+
+  private void stripStick(Player player) {
+    boolean removedStick = false;
+    Inventory inventory = player.getInventory();
+    for (int i = 0; i < inventory.getSize(); i++) {
+      ItemStack item = inventory.getItem(i);
+      if (item == null || !item.hasItemMeta()) {
+        continue;
+      }
+      ItemMeta meta = item.getItemMeta();
+      if (!CosmeticsManager.isValidStickMaterial(item.getType()) || !meta.hasDisplayName()) {
+        continue;
+      }
+      if ("§aHockey Stick".equals(meta.getDisplayName()) || "§bGoalie Stick".equals(meta.getDisplayName())) {
+        inventory.setItem(i, null);
+        removedStick = true;
+      }
+    }
+
+    if (removedStick) {
+      this.playersWithoutFightStick.add(player.getUniqueId());
+    }
   }
 
   /**
