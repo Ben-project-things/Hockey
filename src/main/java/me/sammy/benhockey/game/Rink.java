@@ -80,6 +80,8 @@ public class Rink {
 
   private static final String POSSESSION_YES = "§aYour team has possession";
   private static final String POSSESSION_NO = "§cYour team does not have possession";
+  private static final int FIGHT_STRENGTH_AMPLIFIER = 1;
+  private static final int FIGHT_STRENGTH_DURATION_TICKS = Integer.MAX_VALUE;
 
 
   /**
@@ -819,6 +821,14 @@ public class Rink {
       this.storedFightHelmets.put(playerId, player.getInventory().getHelmet());
       player.getInventory().setHelmet(null);
       stripStick(player);
+      player.addPotionEffect(new PotionEffect(
+              PotionEffectType.INCREASE_DAMAGE,
+              FIGHT_STRENGTH_DURATION_TICKS,
+              FIGHT_STRENGTH_AMPLIFIER,
+              false,
+              false,
+              true
+      ));
     }
 
     if (!brawlFight && fighters.size() == 2) {
@@ -882,6 +892,7 @@ public class Rink {
           player.getInventory().addItem(createHockeyStick(player));
         }
       }
+      player.removePotionEffect(PotionEffectType.INCREASE_DAMAGE);
       player.setHealth(player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getDefaultValue());
       player.setFoodLevel(20);
       player.setSaturation(20f);
@@ -903,6 +914,10 @@ public class Rink {
     this.fightHitTotals.remove(playerId);
     this.fightHealthAtStart.remove(playerId);
     this.activeFightOpponents.remove(playerId);
+    Player player = Bukkit.getPlayer(playerId);
+    if (player != null) {
+      player.removePotionEffect(PotionEffectType.INCREASE_DAMAGE);
+    }
   }
 
   private void stripStick(Player player) {
@@ -1239,7 +1254,7 @@ public class Rink {
 
   public void updatePossessionIndicators() {
     for (Player player : this.getAllPlayers()) {
-      if (this.getTeam(player).equals("away") || this.getTeam(player).equals("home")) {
+      if (!this.getTeam(player).equals("away") && !this.getTeam(player).equals("home")) {
         continue;
       }
 
