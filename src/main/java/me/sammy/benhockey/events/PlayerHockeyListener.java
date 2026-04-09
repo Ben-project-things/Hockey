@@ -19,6 +19,7 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Slime;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -74,7 +75,6 @@ public class PlayerHockeyListener implements Listener {
   private static final int GOALIE_SLIDE_COOLDOWN_TICKS = 10;
   private static final int GOALIE_GLOVE_REGRAB_COOLDOWN_TICKS = 10;
   private static final int HIT_LEVEL_THREE_SLOWNESS_AMPLIFIER = 1;
-  private static final long PLAYER_HIT_COOLDOWN_MS = 350L;
   private static final long SHIFT_LIFT_HIT_COOLDOWN_MS = 250L;
   private static final double NON_DANGLE_LEVEL_THREE_FORWARD_BOOST = 0.5;
   private static final double DANGLE_LEVEL_ONE_SLIDE_STRENGTH = 0.55;
@@ -104,7 +104,6 @@ public class PlayerHockeyListener implements Listener {
   private final Map<String, Entity> activeGoalCelebrationMounts = new HashMap<>();
   private final Set<String> dismissedGoalCelebrationRinks = new HashSet<>();
   private final Map<UUID, Vector> lastPuckVelocity = new HashMap<>();
-  private final Map<UUID, Long> playerHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> shiftLiftHitCooldownMillis = new HashMap<>();
   private final Map<UUID, Long> suppressGroundBounceUntilMillis = new HashMap<>();
   private final Map<UUID, Long> goalieOwnHitNoGloveUntilMillis = new HashMap<>();
@@ -954,7 +953,6 @@ public class PlayerHockeyListener implements Listener {
     this.goalieOwnHitNoGloveUntilMillis.keySet().retainAll(livePucks);
     this.goalieOwnHitNoGlovePlayer.keySet().retainAll(livePucks);
     this.goalieGloveReleaseCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 5000L);
-    this.playerHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue() + 1000L);
     this.shiftLiftHitCooldownMillis.entrySet().removeIf(entry -> nowMillis() > entry.getValue());
     for (Rink rink : this.lobbyManager.getRinks()) {
       rink.retainPuckScopedState(livePucks);
@@ -1447,7 +1445,7 @@ public class PlayerHockeyListener implements Listener {
         continue;
       }
 
-      double horizontalHalf = player.isSneaking() ? 1.02 : 0.78;
+      double horizontalHalf = player.isSneaking() ? 1.22 : 0.88;
       double topY = player.getLocation().getY() + 2.2;
       double bottomY = player.getLocation().getY() - 0.2;
 
@@ -1644,15 +1642,6 @@ public class PlayerHockeyListener implements Listener {
       e.setCancelled(true);
       return;
     }
-    long now = System.currentTimeMillis();
-    long hitCooldownEnd = this.playerHitCooldownMillis.getOrDefault(damager.getUniqueId(), 0L);
-    if (now < hitCooldownEnd) {
-      e.setCancelled(true);
-      return;
-    }
-    this.playerHitCooldownMillis.put(damager.getUniqueId(), now + PLAYER_HIT_COOLDOWN_MS);
-
-
     for (Player p : damagerRink.getRefs()) {
       p.sendMessage("§6[§bBH§6] §e" + damager.getName() + " hit "
               + damaged.getName() + "§7 (Power " + damager.getLevel() + ")");
@@ -1663,6 +1652,48 @@ public class PlayerHockeyListener implements Listener {
     e.setDamage(0.0);
     damaged.sendMessage("§6[§bBH§6] §cYou were hit by §f" + damager.getName() + " §7-> Power " + hitLevel);
     damager.sendMessage("§6[§bBH§6] §aYou hit §f" + damaged.getName() + " §7-> Power " + hitLevel);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onFightLethalDamage(EntityDamageEvent e) {
+    if (!(e.getEntity() instanceof Player)) {
+      return;
+    }
+
+    Player knockedOut = (Player) e.getEntity();
+    Rink rink = this.lobbyManager.getPlayerRink(knockedOut);
+    if (rink == null || !rink.isPlayerFighting(knockedOut)) {
+      return;
+    }
+
+    if (e.getFinalDamage() < knockedOut.getHealth()) {
+      return;
+    }
+
+    e.setCancelled(true);
+    knockedOut.setFireTicks(0);
+    knockedOut.setHealth(knockedOut.getAttribute(Attribute.GENERIC_MAX_HEALTH).getDefaultValue());
+    knockedOut.setFoodLevel(20);
+    knockedOut.setSaturation(20f);
+
+    Player killer = knockedOut.getKiller();
+    if (killer != null && rink.isPlayerFighting(killer)) {
+      for (Player p : rink.getAllPlayers()) {
+        p.sendMessage("§6[§bBH§6] §c" + killer.getName() + " has knocked out " + knockedOut.getName() + ".");
+      }
+    }
+
+    sendFightStats(rink, knockedOut, killer);
+    Location bench = getBenchLocationFor(knockedOut, rink);
+    if (bench != null) {
+      knockedOut.teleport(bench);
+    }
+
+    if (!rink.isBrawlFightActive()) {
+      rink.endFight();
+    } else {
+      rink.removeFighter(knockedOut.getUniqueId());
+    }
   }
 
   @EventHandler
